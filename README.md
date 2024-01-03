@@ -1,14 +1,16 @@
-## Compare different-masked Atha reference genome.
+## Compare different-masked A.tha reference genome.
 
-| Name                                                   | chrLength | size   | coverage |
-|:-------------------------------------------------------|:----------|:-------|:---------|
-| Current version of soft_masked by ENSEMBL (version 57) | 119146348 | 186207 | 0.0016   |
-| Old version of soft_masked by ENSEMBL (version 52)     | 119146348 | 186207 | 0.0016   |
-| RepeatMasked with CONS-Dfam_withRBRM                   | 119146348 | 186207 | 0.0016   |
-| RepeatMasked with CONS-Dfam_3.7                        | 119146348 | 186207 | 0.0016   |
-| Not masked                                             | 119146348 | 186207 | 0.0016   |
+### Masked region size.
 
-### RepeatMasked with CONS-Dfam_withRBRM.
+| Name                                                   | chrLength | masked size | coverage |
+|:-------------------------------------------------------|:----------|:------------|:---------|
+| Current version of soft_masked by ENSEMBL (version 57) | 119146348 | 38123558    | 0.3200   |
+| Old version of soft_masked by ENSEMBL (version 52)     | 119146348 | 28109149    | 0.2359   |
+| RepeatMasked with CONS-Dfam_withRBRM                   | 119146348 | 21267278    | 0.1785   |
+| RepeatMasked with CONS-Dfam (version 3.7)              | 119146348 | 2393023     | 0.0201   |
+| Not masked                                             | 119146348 | 186207      | 0.0016   |
+
+RepeatMasked with CONS-Dfam_withRBRM:
 
 ```shell
 #==================================================
@@ -56,7 +58,7 @@
 #==================================================
 ```
 
-### RepeatMasked with CONS-Dfam_3.7.
+RepeatMasked with CONS-Dfam (version 3.7):
 
 ```shell
 #==================================================
@@ -103,3 +105,13 @@
 #Low complexity:      10698       583930 bp    0.49 %
 #==================================================
 ```
+
+### Segmental duplications.
+
+| Name                                                   | chrLength | defined size | coverage | copy2 count | BISER  |
+|:-------------------------------------------------------|:----------|:-------------|:---------|:------------|:-------|
+| Current version of soft_masked by ENSEMBL (version 57) | 119146348 | 9776236      | 0.0818   | 2625        | 2568   |
+| Old version of soft_masked by ENSEMBL (version 52)     | 119146348 | 11434422     | 0.0957   | 3155        | 4120   |
+| RepeatMasked with CONS-Dfam_withRBRM                   | 119146348 | 13098118     | 0.1096   | 3480        | 6363   |
+| RepeatMasked with CONS-Dfam (version 3.7)              | 119146348 | 19236669     | 0.1610   | 5019        | 98127  |
+| Not masked                                             | 119146348 | 19188917     | 0.1606   | 4987        | 103833 |
