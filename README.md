@@ -1,5 +1,13 @@
 ## Compare different-masked Atha reference genome.
 
+| Name                                                   | chrLength | size   | coverage |
+|:-------------------------------------------------------|:----------|:-------|:---------|
+| Current version of soft_masked by ENSEMBL (version 57) | 119146348 | 186207 | 0.0016   |
+| Old version of soft_masked by ENSEMBL (version 52)     | 119146348 | 186207 | 0.0016   |
+| RepeatMasked with CONS-Dfam_withRBRM                   | 119146348 | 186207 | 0.0016   |
+| RepeatMasked with CONS-Dfam_3.7                        | 119146348 | 186207 | 0.0016   |
+| Not masked                                             | 119146348 | 186207 | 0.0016   |
+
 ### Current version of soft_masked by ENSEMBL (version 57).
 
 | chrLength | size     | coverage |
