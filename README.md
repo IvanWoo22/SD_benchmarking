@@ -8,18 +8,6 @@
 | RepeatMasked with CONS-Dfam_3.7                        | 119146348 | 186207 | 0.0016   |
 | Not masked                                             | 119146348 | 186207 | 0.0016   |
 
-### Current version of soft_masked by ENSEMBL (version 57).
-
-| chrLength | size     | coverage |
-|:----------|:---------|:---------|
-| 119146348 | 38123558 | 0.3200   |
-
-### Old version of soft_masked by ENSEMBL (version 52).
-
-| chrLength | size     | coverage |
-|:----------|:---------|:---------|
-| 119146348 | 28109149 | 0.2359   |
-
 ### RepeatMasked with CONS-Dfam_withRBRM.
 
 ```shell
@@ -68,10 +56,6 @@
 #==================================================
 ```
 
-| chrLength | size     | coverage |
-|:----------|:---------|:---------|
-| 119146348 | 21267278 | 0.1785   |
-
 ### RepeatMasked with CONS-Dfam_3.7.
 
 ```shell
@@ -119,14 +103,3 @@
 #Low complexity:      10698       583930 bp    0.49 %
 #==================================================
 ```
-
-| chrLength | size    | coverage |
-|:----------|:--------|:---------|
-| 119146348 | 2393023 | 0.0201   |
-
-### Not masked.
-
-| chrLength | size   | coverage |
-|:----------|:-------|:---------|
-| 119146348 | 186207 | 0.0016   |
-
