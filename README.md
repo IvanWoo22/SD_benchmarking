@@ -108,10 +108,11 @@ RepeatMasked with CONS-Dfam (version 3.7):
 
 ### Segmental duplications.
 
-| Name                                                   | chrLength | defined size | coverage | copy2 count | BISER  |
-|:-------------------------------------------------------|:----------|:-------------|:---------|:------------|:-------|
-| Current version of soft_masked by ENSEMBL (version 57) | 119146348 | 9776236      | 0.0818   | 2625        | 2568   |
-| Old version of soft_masked by ENSEMBL (version 52)     | 119146348 | 11434422     | 0.0957   | 3155        | 4120   |
-| RepeatMasked with CONS-Dfam_withRBRM                   | 119146348 | 13098118     | 0.1096   | 3480        | 6363   |
-| RepeatMasked with CONS-Dfam (version 3.7)              | 119146348 | 19236669     | 0.1610   | 5019        | 98127  |
-| Not masked                                             | 119146348 | 19188917     | 0.1606   | 4987        | 103833 |
+| Name                                                   | chrLength | defined size | coverage | copy2 count | BISER  | ASGART |
+|:-------------------------------------------------------|:----------|:-------------|:---------|:------------|:-------|:-------|
+| Current version of soft_masked by ENSEMBL (version 57) | 119146348 | 9776236      | 0.0818   | 2625        | 2568   | 238    |
+| Old version of soft_masked by ENSEMBL (version 52)     | 119146348 | 11434422     | 0.0957   | 3155        | 4120   | 418    |
+| RepeatMasked with CONS-Dfam_withRBRM                   | 119146348 | 13098118     | 0.1096   | 3480        | 6363   | 670    |
+| RepeatMasked with CONS-Dfam (version 3.7)              | 119146348 | 19236669     | 0.1610   | 5019        | 98127  | 9341   |
+| Not masked                                             | 119146348 | 19188917     | 0.1606   | 4987        | 103833 | 11775  |
+
