@@ -1,0 +1,201 @@
+```shell
+wget https://www.arabidopsis.org/download_files/Genes/TAIR10_genome_release/TAIR10_chromosome_files/TAIR10_chr_all.fas.gz
+pigz -dc TAIR10_chr_all.fas.gz >TAIR10_chr_all.fas
+rm TAIR10_chr_all.fas.gz
+```
+
+```shell
+faops split-name TAIR10_chr_all.fas .
+```
+
+```shell
+for i in 1 2 3 4 5; do
+	RepeatMasker -spec arabidopsis -pa 16 -s -xsmall -e ncbi -dir . Chr${i}.fa
+	RM2Bed.py -d . Chr${i}.fa.out
+	cat Chr${i}.fa >>TAIR10_chr.fas
+done
+cat Chr{1,2,3,4,5}.fa_rm.bed >TAIR10.rm.fofn
+cat TAIR10.rm.fofn | bedtools sort -i - >TAIR10_repeatmasker.out.bed
+```
+
+```shell
+for i in 1 2 3 4 5; do
+	trf Chr${i}.fa 2 7 7 80 10 50 15 -l 25 -h -ngs >Chr${i}.fa.dat
+done
+```
+
+```python
+import sys
+import pandas as pd
+
+input_dats = ["Chr1.fa.dat", "Chr2.fa.dat", "Chr3.fa.dat", "Chr4.fa.dat", "Chr5.fa.dat"]
+output_bed = "TAIR10_trf.bed"
+header = '#chr start end PeriodSize CopyNumber ConsensusSize PercentMatches PercentIndels Score A C G T Entropy Motif Sequence'.split()
+
+trf = []
+for datf in input_dats:
+    chrom = None
+    sys.stderr.write("\r" + datf)
+    with open(datf, 'r') as dat:
+        for line in dat:
+            splitline = line.split()
+            if line.startswith("Sequence:"):
+                chrom = int(line.split()[1].strip())
+            elif line.startswith("@"):
+                chrom = splitline[0][1:].strip()
+            else:
+                try:
+                    int(splitline[0])
+                except ValueError:
+                    continue
+                trf.append([chrom] + splitline[0: (len(header) - 1)])
+
+trf_df = pd.DataFrame(trf, columns=header)
+trf_df["start"] = trf_df["start"].astype(int)
+trf_df.sort_values(by=["#chr", "start"], inplace=True)
+trf_df.to_csv(output_bed, sep="\t", index=False)
+```
+
+```shell
+cat TAIR10_trf.bed TAIR10_repeatmasker.out.bed \
+	| cut -f 1-3 >>TAIR10.tmp.msk.bed
+cut -f 1-3 TAIR10.tmp.msk.bed \
+	| bedtools sort -i - \
+	| bedtools merge -i - \
+	| awk '$3-$2 > 2000 {print $0}' \
+	| bedtools merge -d 100 -i - >TAIR10.tmp2.msk.bed
+cut -f 1-3 TAIR10.tmp.msk.bed TAIR10.tmp2.msk.bed \
+	| bedtools sort -i - \
+	| bedtools merge -i - \
+	| seqtk seq -l 50 -M /dev/stdin TAIR10_chr.fas >TAIR10_masked.fa
+rm Chr* TAIR10_repeatmasker.out.bed TAIR10_trf.bed TAIR10.tmp.msk.bed TAIR10.tmp2.msk.bed TAIR10.rm.fofn
+```
+
+```shell
+mkdir "biser" && cd "biser" || exit
+biser -t 20 -o Atha.out ../TAIR10_masked.fa
+cd ..
+```
+
+```shell
+awk '{print $1"("$9"):"$2"-"$3"\t"$4"("$10"):"$5"-"$6}' Atha.out |
+linkr sort stdin |
+linkr clean stdin -o links.sort.clean.tsv
+
+rgr merge links.sort.clean.tsv -c 0.9 -o links.merge.tsv
+linkr clean links.sort.clean.tsv -r links.merge.tsv --bundle 500 -o links.clean.tsv
+linkr connect links.clean.tsv -r 0.05 -o links.connect.tsv
+linkr filter links.connect.tsv -r 0.05 -o links.filter.tsv
+
+linkr filter links.filter.tsv -n 2 -o stdout >links2.tsv
+```
+
+```shell
+mkdir "lastz" && cd "lastz" || exit
+echo 'strain,strain_id,species,species_id,genus,genus_id,family,family_id,order,order_id
+Atha,3702,"Arabidopsis thaliana",3702,Arabidopsis,3701,Brassicaceae,3700,Brassicales,3699' >ensembl_taxon.csv
+egaz prepseq ../TAIR10_masked.fa -o ./
+egaz template ./ --self -o . --taxon ./ensembl_taxon.csv --circos --parallel 16 -v
+mkdir -p Pairwise
+egaz lastz \
+	--isself --set set01 -C 0 \
+	--parallel 16 --verbose \
+	. . \
+	-o Pairwise/AthavsSelf
+egaz lpcnam \
+	--parallel 16 --verbose \
+	. . \
+	Pairwise/AthavsSelf
+```
+
+```shell
+mkdir -p Results/Atha
+mkdir -p Processing/Atha
+ln -s "$(pwd)"/chr.fasta Processing/Atha/genome.fa
+cp -f "$(pwd)"/chr.sizes Processing/Atha/chr.sizes
+
+cd Processing/Atha || exit
+fasops axt2fas \
+	../../Pairwise/AthavsSelf/axtNet/*.axt.gz \
+	-l 1000 -s chr.sizes -o stdout >axt.fas
+fasops separate axt.fas -o . --nodash -s .sep.fasta
+egaz exactmatch target.sep.fasta genome.fa --length 500 --discard 50 -o replace.target.tsv
+fasops replace axt.fas replace.target.tsv -o axt.target.fas
+egaz exactmatch query.sep.fasta genome.fa --length 500 --discard 50 -o replace.query.tsv
+fasops replace axt.target.fas replace.query.tsv -o axt.correct.fas
+fasops covers axt.correct.fas -o axt.correct.yml
+spanr split axt.correct.yml -s .temp.yml -o .
+spanr compare --op union target.temp.yml query.temp.yml -o axt.union.yml
+spanr stat chr.sizes axt.union.yml -o union.csv
+fasops links axt.correct.fas -o stdout | perl -nl -e "s/(target|query)\.//g; print;" >links.lastz.tsv
+fasops separate axt.correct.fas --nodash --rc -o stdout \
+	| perl -nl -e "/^>/ and s/^>(target|query)\./\>/; print;" \
+	| faops filter -u stdin stdout \
+	| faops filter -n 250 stdin stdout \
+		>axt.gl.fasta
+```
+
+```shell
+egaz blastn axt.gl.fasta genome.fa -o axt.bg.blast --parallel 8
+egaz blastmatch axt.bg.blast -c 0.95 -o axt.bg.region --parallel 8
+samtools faidx genome.fa -r axt.bg.region --continue \
+	| perl -p -e "/^>/ and s/:/(+):/" >axt.bg.fasta
+cat axt.gl.fasta axt.bg.fasta | faops filter -u stdin stdout \
+	| faops filter -n 250 stdin stdout >axt.all.fasta
+egaz blastn axt.all.fasta axt.all.fasta -o axt.all.blast --parallel 8
+egaz blastlink axt.all.blast -c 0.95 -o links.blast.tsv --parallel 8
+
+linkr sort links.lastz.tsv links.blast.tsv -o links.sort.tsv
+linkr clean links.sort.tsv -o links.sort.clean.tsv
+
+rgr merge links.sort.clean.tsv -c 0.95 -o links.merge.tsv
+linkr clean links.sort.clean.tsv -r links.merge.tsv --bundle 500 -o links.clean.tsv
+
+linkr connect links.clean.tsv -r 0.9 -o links.connect.tsv
+linkr filter links.connect.tsv -r 0.8 -o links.filter.tsv
+
+fasops create links.filter.tsv -g genome.fa -o multi.temp.fas
+fasops refine multi.temp.fas --msa mafft -p 16 --chop 10 -o multi.refine.fas
+fasops links multi.refine.fas -o stdout | linkr sort stdin -o stdout | linkr filter stdin -n 2-50 -o links.refine.tsv
+fasops links multi.refine.fas -o stdout --best | linkr sort stdin -o links.best.tsv
+fasops create links.best.tsv -g genome.fa --name Atha -o pair.temp.fas
+fasops refine pair.temp.fas --msa mafft -p 16 -o pair.refine.fas
+
+perl -nla -F"\t" -e "print for @F" <links.refine.tsv | spanr cover stdin -o cover.yml
+echo "key,count" >links.count.csv
+for n in 2 3 4-50; do
+	linkr filter links.refine.tsv -n ${n} -o stdout \
+		>links.copy${n}.tsv
+	perl -nla -F"\t" -e "print for @F" <links.copy${n}.tsv | spanr cover stdin -o copy${n}.temp.yml
+	wc -l links.copy${n}.tsv \
+		| perl -nl -e "
+            @fields = grep {/\S+/} split /\s+/;
+            next unless @fields == 2;
+            next unless \$fields[1] =~ /links\.([\w-]+)\.tsv/;
+            printf qq{%s,%s\n}, \$1, \$fields[0];
+        " \
+			>>links.count.csv
+	rm links.copy${n}.tsv
+done
+spanr merge copy2.temp.yml copy3.temp.yml copy4-50.temp.yml -o copy.yml
+spanr stat chr.sizes copy.yml --all -o links.copy.csv
+fasops mergecsv links.copy.csv links.count.csv --concat -o copy.csv
+spanr stat chr.sizes cover.yml -o cover.yml.csv
+```
+
+```shell
+cp cover.yml ../../Atha.cover.yml
+cp copy.yml ../../Atha.copy.yml
+mv cover.yml.csv ../../Atha.cover.csv
+mv copy.csv ../../Atha.copy.csv
+cp links.refine.tsv ../../Atha.links.tsv
+mv multi.refine.fas ../../Atha.multi.fas
+mv pair.refine.fas ../../Atha.pair.fas
+cd ../..
+rm -rf Processing Pairwise Results Chr*.fa chr* *.sh
+```
+
+| Name                                 | chrLength | defined size | coverage | copy2 count | BISER | BISER merged | ASGART |
+|:-------------------------------------|:----------|:-------------|:---------|:------------|:------|:-------------|:-------|
+| RepeatMasked with CONS-Dfam_withRBRM | 119146348 | 13098118     | 0.1096   | 3460        | 6314  | 2673         | 670    |
+
