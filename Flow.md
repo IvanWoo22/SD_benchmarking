@@ -1,4 +1,5 @@
 ```shell
+mkdir "reference" && cd "reference" || exit
 wget https://www.arabidopsis.org/download_files/Genes/TAIR10_genome_release/TAIR10_chromosome_files/TAIR10_chr_all.fas.gz
 wget https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna_sm.toplevel.fa.gz
 wget https://www.arabidopsis.org/download_files/Genes/Col-CEN%20genome%20assembly%20release/ColCEN.fasta
@@ -163,6 +164,7 @@ egaz prepseq ../ColCEN_unmasked.fa -o .
 faops masked ../ColCEN_unmasked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
 faops masked ../ColCEN_rmmasked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
 cd .. && rm -rf "smcover"
+cd ..
 ```
 
 |                  | chrLength |     size | coverage |
@@ -176,7 +178,7 @@ cd .. && rm -rf "smcover"
 ```shell
 mkdir "biser" && cd "biser" || exit
 for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked; do
-	biser -t 20 -o ${PREFIX}.out ../${PREFIX}.fa
+	biser -t 20 -o ${PREFIX}.out ../reference/${PREFIX}.fa
 	awk '{print $1"("$9"):"$2"-"$3"\t"$4"("$10"):"$5"-"$6}' ${PREFIX}.out \
 		| linkr sort stdin \
 		| linkr clean stdin -o ${PREFIX}.links.sort.clean.tsv
@@ -184,12 +186,14 @@ for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked C
 		| linkr filter stdin -r 0.05 -o ${PREFIX}.links.filter.tsv
 	linkr filter ${PREFIX}.links.filter.tsv -n 2 -o stdout >${PREFIX}.links2.tsv
 done
+for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked; do
+	rgr merge ${PREFIX}.links.sort.clean.tsv -c 0.95 -o ${PREFIX}.links.merge.tsv
+	linkr clean ${PREFIX}.links.sort.clean.tsv -r ${PREFIX}.links.merge.tsv --bundle 500 -o ${PREFIX}.links.clean.tsv
+done
 cd ..
 ```
 
 ```shell
-
-
 linkr filter links.filter.tsv -n 2 -o stdout >links2.tsv
 ```
 
@@ -197,7 +201,7 @@ linkr filter links.filter.tsv -n 2 -o stdout >links2.tsv
 mkdir "lastz" && cd "lastz" || exit
 echo 'strain,strain_id,species,species_id,genus,genus_id,family,family_id,order,order_id
 Atha,3702,"Arabidopsis thaliana",3702,Arabidopsis,3701,Brassicaceae,3700,Brassicales,3699' >ensembl_taxon.csv
-egaz prepseq ../TAIR10_masked.fa -o ./
+egaz prepseq ../reference/TAIR10_masked.fa -o ./
 egaz template ./ --self -o . --taxon ./ensembl_taxon.csv --circos --parallel 16 -v
 mkdir -p Pairwise
 egaz lastz \
