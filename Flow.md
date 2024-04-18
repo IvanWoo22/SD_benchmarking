@@ -152,17 +152,17 @@ rm Chr* ColCEN_repeatmasker.out.bed ColCEN_trf.bed ColCEN.tmp.msk.bed ColCEN.tmp
 ```
 
 ```shell
-cd ..
-rm -rf "rm"
+cd .. && rm -rf "rm"
 mkdir "smcover" && cd "smcover" || exit
 egaz prepseq ../TAIR10_unmasked.fa -o .
 faops masked ../TAIR10_unmasked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
 faops masked ../TAIR10_rmmasked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
 faops masked ../TAIR10_E58masked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
-
+rm chr.* Chr.*
 egaz prepseq ../ColCEN_unmasked.fa -o .
 faops masked ../ColCEN_unmasked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
 faops masked ../ColCEN_rmmasked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
+cd .. && rm -rf "smcover"
 ```
 
 |                  | chrLength |     size | coverage |
@@ -175,19 +175,20 @@ faops masked ../ColCEN_rmmasked.fa | spanr cover stdin | spanr stat --all chr.si
 
 ```shell
 mkdir "biser" && cd "biser" || exit
-biser -t 20 -o Atha.out ../TAIR10_masked.fa
+for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked; do
+	biser -t 20 -o ${PREFIX}.out ../${PREFIX}.fa
+	awk '{print $1"("$9"):"$2"-"$3"\t"$4"("$10"):"$5"-"$6}' ${PREFIX}.out \
+		| linkr sort stdin \
+		| linkr clean stdin -o ${PREFIX}.links.sort.clean.tsv
+	linkr connect ${PREFIX}.links.sort.clean.tsv -r 0.05 \
+		| linkr filter stdin -r 0.05 -o ${PREFIX}.links.filter.tsv
+	linkr filter ${PREFIX}.links.filter.tsv -n 2 -o stdout >${PREFIX}.links2.tsv
+done
 cd ..
 ```
 
 ```shell
-awk '{print $1"("$9"):"$2"-"$3"\t"$4"("$10"):"$5"-"$6}' Atha.out |
-linkr sort stdin |
-linkr clean stdin -o links.sort.clean.tsv
 
-rgr merge links.sort.clean.tsv -c 0.9 -o links.merge.tsv
-linkr clean links.sort.clean.tsv -r links.merge.tsv --bundle 500 -o links.clean.tsv
-linkr connect links.clean.tsv -r 0.05 -o links.connect.tsv
-linkr filter links.connect.tsv -r 0.05 -o links.filter.tsv
 
 linkr filter links.filter.tsv -n 2 -o stdout >links2.tsv
 ```
