@@ -1,20 +1,34 @@
 ```shell
 wget https://www.arabidopsis.org/download_files/Genes/TAIR10_genome_release/TAIR10_chromosome_files/TAIR10_chr_all.fas.gz
-pigz -dc TAIR10_chr_all.fas.gz >TAIR10_chr_all.fas
-rm TAIR10_chr_all.fas.gz
+wget https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna_sm.toplevel.fa.gz
+wget https://www.arabidopsis.org/download_files/Genes/Col-CEN%20genome%20assembly%20release/ColCEN.fasta
+
+pigz -dc TAIR10_chr_all.fas.gz | faops split-name stdin .
+rm ChrC.fa ChrM.fa
+cat Chr*.fa >TAIR10_unmasked.fa
+rm Chr*.fa
+pigz -dc Arabidopsis_thaliana.TAIR10.dna_sm.toplevel.fa.gz | sed 's/>/>Chr/g' | faops split-name stdin .
+rm ChrPt.fa ChrMt.fa
+cat Chr*.fa >TAIR10_E58masked.fa
+rm Chr*.fa
+faops split-name ColCEN.fasta .
+rm ChrC.fa ChrM.fa
+cat Chr*.fa >ColCEN_unmasked.fa
+rm Chr*.fa
+rm TAIR10_chr_all.fas.gz Arabidopsis_thaliana.TAIR10.dna_sm.toplevel.fa.gz
 ```
 
 ```shell
-faops split-name TAIR10_chr_all.fas .
+mkdir "rm" && cd "rm" || exit
+faops split-name ../TAIR10_unmasked.fa .
 ```
 
 ```shell
 for i in 1 2 3 4 5; do
 	RepeatMasker -spec arabidopsis -pa 16 -s -xsmall -e ncbi -dir . Chr${i}.fa
 	RM2Bed.py -d . Chr${i}.fa.out
-	cat Chr${i}.fa >>TAIR10_chr.fas
 done
-cat Chr{1,2,3,4,5}.fa_rm.bed >TAIR10.rm.fofn
+cat Chr*.fa_rm.bed >TAIR10.rm.fofn
 cat TAIR10.rm.fofn | bedtools sort -i - >TAIR10_repeatmasker.out.bed
 ```
 
@@ -67,8 +81,85 @@ cut -f 1-3 TAIR10.tmp.msk.bed \
 cut -f 1-3 TAIR10.tmp.msk.bed TAIR10.tmp2.msk.bed \
 	| bedtools sort -i - \
 	| bedtools merge -i - \
-	| seqtk seq -l 50 -M /dev/stdin TAIR10_chr.fas >TAIR10_masked.fa
+	| seqtk seq -l 50 -M /dev/stdin ../TAIR10_unmasked.fa >../TAIR10_rmmasked.fa
 rm Chr* TAIR10_repeatmasker.out.bed TAIR10_trf.bed TAIR10.tmp.msk.bed TAIR10.tmp2.msk.bed TAIR10.rm.fofn
+```
+
+```shell
+faops split-name ../ColCEN_unmasked.fa .
+```
+
+```shell
+for i in 1 2 3 4 5; do
+	RepeatMasker -spec arabidopsis -pa 16 -s -xsmall -e ncbi -dir . Chr${i}.fa
+	RM2Bed.py -d . Chr${i}.fa.out
+done
+cat Chr*.fa_rm.bed >ColCEN.rm.fofn
+cat ColCEN.rm.fofn | bedtools sort -i - >ColCEN_repeatmasker.out.bed
+```
+
+```shell
+for i in 1 2 3 4 5; do
+	trf Chr${i}.fa 2 7 7 80 10 50 15 -l 25 -h -ngs >Chr${i}.fa.dat
+done
+```
+
+```python
+import sys
+import pandas as pd
+
+input_dats = ["Chr1.fa.dat", "Chr2.fa.dat", "Chr3.fa.dat", "Chr4.fa.dat", "Chr5.fa.dat"]
+output_bed = "ColCEN_trf.bed"
+header = '#chr start end PeriodSize CopyNumber ConsensusSize PercentMatches PercentIndels Score A C G T Entropy Motif Sequence'.split()
+
+trf = []
+for datf in input_dats:
+    chrom = None
+    sys.stderr.write("\r" + datf)
+    with open(datf, 'r') as dat:
+        for line in dat:
+            splitline = line.split()
+            if line.startswith("Sequence:"):
+                chrom = int(line.split()[1].strip())
+            elif line.startswith("@"):
+                chrom = splitline[0][1:].strip()
+            else:
+                try:
+                    int(splitline[0])
+                except ValueError:
+                    continue
+                trf.append([chrom] + splitline[0: (len(header) - 1)])
+
+trf_df = pd.DataFrame(trf, columns=header)
+trf_df["start"] = trf_df["start"].astype(int)
+trf_df.sort_values(by=["#chr", "start"], inplace=True)
+trf_df.to_csv(output_bed, sep="\t", index=False)
+```
+
+```shell
+cat ColCEN_trf.bed ColCEN_repeatmasker.out.bed \
+	| cut -f 1-3 >>ColCEN.tmp.msk.bed
+cut -f 1-3 ColCEN.tmp.msk.bed \
+	| bedtools sort -i - \
+	| bedtools merge -i - \
+	| awk '$3-$2 > 2000 {print $0}' \
+	| bedtools merge -d 100 -i - >ColCEN.tmp2.msk.bed
+cut -f 1-3 ColCEN.tmp.msk.bed ColCEN.tmp2.msk.bed \
+	| bedtools sort -i - \
+	| bedtools merge -i - \
+	| seqtk seq -l 50 -M /dev/stdin ../ColCEN_unmasked.fa >../ColCEN_rmmasked.fa
+rm Chr* ColCEN_repeatmasker.out.bed ColCEN_trf.bed ColCEN.tmp.msk.bed ColCEN.tmp2.msk.bed ColCEN.rm.fofn
+```
+
+```shell
+cd ..
+rm -rf "rm"
+```
+
+```shell
+mkdir "smcover" && cd "smcover" || exit
+egaz prepseq ../TAIR10_unmasked.fa -o .
+
 ```
 
 ```shell
