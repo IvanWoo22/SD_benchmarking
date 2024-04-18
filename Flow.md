@@ -14,7 +14,7 @@ rm Chr*.fa
 faops split-name ColCEN.fasta .
 rm ChrC.fa ChrM.fa
 cat Chr*.fa >ColCEN_unmasked.fa
-rm Chr*.fa
+rm Chr*.fa ColCEN.fasta
 rm TAIR10_chr_all.fas.gz Arabidopsis_thaliana.TAIR10.dna_sm.toplevel.fa.gz
 ```
 
@@ -154,13 +154,24 @@ rm Chr* ColCEN_repeatmasker.out.bed ColCEN_trf.bed ColCEN.tmp.msk.bed ColCEN.tmp
 ```shell
 cd ..
 rm -rf "rm"
-```
-
-```shell
 mkdir "smcover" && cd "smcover" || exit
 egaz prepseq ../TAIR10_unmasked.fa -o .
+faops masked ../TAIR10_unmasked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
+faops masked ../TAIR10_rmmasked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
+faops masked ../TAIR10_E58masked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
 
+egaz prepseq ../ColCEN_unmasked.fa -o .
+faops masked ../ColCEN_unmasked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
+faops masked ../ColCEN_rmmasked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
 ```
+
+|                  | chrLength |     size | coverage |
+|:-----------------|----------:|---------:|---------:|
+| TAIR10_unmasked  | 119146348 |   186207 |   0.0016 |
+| TAIR10_rmmasked  | 119146348 | 21324693 |   0.1790 |
+| TAIR10_E58masked | 119146348 | 38123558 |   0.3200 |
+| ColCEN_unmasked  | 131559676 |        0 |   0.0000 |
+| ColCEN_rmmasked  | 131559676 | 33290733 |   0.2530 |
 
 ```shell
 mkdir "biser" && cd "biser" || exit
