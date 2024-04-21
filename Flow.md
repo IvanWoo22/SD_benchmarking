@@ -178,58 +178,53 @@ cd ..
 ```shell
 mkdir "biser" && cd "biser" || exit
 for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked; do
-	biser -t 20 -o ${PREFIX}.out ../reference/${PREFIX}.fa
-	awk '{print $1"("$9"):"$2"-"$3"\t"$4"("$10"):"$5"-"$6}' ${PREFIX}.out \
+	mkdir ${PREFIX}
+	biser -t 20 -o ${PREFIX}/biser_out ../reference/${PREFIX}.fa
+	awk '{print $1"("$9"):"$2"-"$3"\t"$4"("$10"):"$5"-"$6}' ${PREFIX}/biser_out \
 		| linkr sort stdin \
-		| linkr clean stdin -o ${PREFIX}.links.sort.clean.tsv
-done
-for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked; do
-	linkr connect ${PREFIX}.links.sort.clean.tsv -r 0.05 \
-		| linkr filter stdin -r 0.05 -o ${PREFIX}.links.filter.tsv
-done
-for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked; do
-	rgr merge ${PREFIX}.links.sort.clean.tsv -c 0.95 -o ${PREFIX}.links.merge.tsv
-	linkr clean ${PREFIX}.links.sort.clean.tsv -r ${PREFIX}.links.merge.tsv --bundle 500 -o ${PREFIX}.links.clean.tsv
-	linkr connect ${PREFIX}.links.clean.tsv -r 0.05 \
-		| linkr filter stdin -r 0.05 -o ${PREFIX}.links.filter0.tsv
+		| linkr clean stdin -o ${PREFIX}/links.sort.clean.tsv
+	rgr merge ${PREFIX}/links.sort.clean.tsv -c 0.95 \
+		-o ${PREFIX}/links.merge.tsv
+	linkr clean ${PREFIX}/links.sort.clean.tsv \
+		-r ${PREFIX}/links.merge.tsv --bundle 500 \
+		-o ${PREFIX}/links.clean.tsv
+	linkr connect ${PREFIX}/links.clean.tsv -r 0.05 \
+		| linkr filter stdin -r 0.05 -o ${PREFIX}/links.filter.tsv
 done
 cd ..
 ```
 
 ```shell
-echo "sample,key,count" >links.count.csv
 for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked; do
+	egaz prepseq ../reference/${PREFIX}.fa -o ${PREFIX}/
+	cd ${PREFIX} || exit
+	perl -nla -F"\t" -e "print for @F" <links.filter.tsv | spanr cover stdin -o cover.yml
+	echo "key,count" >links.count.csv
 	for n in 2 3 4-50; do
-		linkr filter ${PREFIX}.links.filter.tsv -n ${n} -o stdout >${PREFIX}.links.copy${n}.tsv
-		wc -l ${PREFIX}.links.copy${n}.tsv \
+		linkr filter links.filter.tsv -n ${n} -o links.copy${n}.tsv
+		perl -nla -F"\t" -e "print for @F" <links.copy${n}.tsv | spanr cover stdin -o copy${n}.temp.yml
+		wc -l links.copy${n}.tsv \
 			| perl -nl -e "
-				@fields = grep { /\S+/ } split /\s+/;
-				next unless @fields == 2;
-				next unless \$fields[1] =~ /(\w+).links\.([\w-]+)\.tsv/;
-				printf qq{%s,%s,%s\n}, \$1, \$2, \$fields[0];
+            @fields = grep {/\S+/} split /\s+/;
+            next unless @fields == 2;
+            next unless \$fields[1] =~ /links\.([\w-]+)\.tsv/;
+            printf qq{%s,%s\n}, \$1, \$fields[0];
         " \
 				>>links.count.csv
+		rm links.copy${n}.tsv
 	done
+	spanr merge copy2.temp.yml copy3.temp.yml copy4-50.temp.yml -o copy.yml
+	spanr stat chr.sizes copy.yml --all -o links.copy.csv
+	fasops mergecsv links.copy.csv links.count.csv --concat -o copy.csv
+	spanr stat chr.sizes cover.yml -o cover.yml.csv
+	mv cover.yml Atha.cover.yml
+	mv copy.yml Atha.copy.yml
+	mv cover.yml.csv Atha.cover.csv
+	mv copy.csv Atha.copy.csv
+	mv links.filter.tsv Atha.links.tsv
+	rm -rf Chr*.fa chr* ./*.temp.yml ./*.links.merge.tsv ./*.links.sort.clean.tsv
+	cd ..
 done
-echo "sample,key,count" >links.count0.csv
-for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked; do
-	for n in 2 3 4-50; do
-		linkr filter ${PREFIX}.links.filter0.tsv -n ${n} -o stdout >${PREFIX}.links.copy${n}.tsv
-		wc -l ${PREFIX}.links.copy${n}.tsv \
-			| perl -nl -e "
-				@fields = grep { /\S+/ } split /\s+/;
-				next unless @fields == 2;
-				next unless \$fields[1] =~ /(\w+).links\.([\w-]+)\.tsv/;
-				printf qq{%s,%s,%s\n}, \$1, \$2, \$fields[0];
-        " \
-				>>links.count0.csv
-	done
-done
-```
-
-```shell
-rm *.links.merge.tsv *.links.sort.clean.tsv
-cd ..
 ```
 
 ```shell
@@ -347,8 +342,3 @@ for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked; 
 	cd ..
 done
 ```
-
-| Name                                 | chrLength | defined size | coverage | copy2 count | BISER | BISER merged | ASGART |
-|:-------------------------------------|:----------|:-------------|:---------|:------------|:------|:-------------|:-------|
-| RepeatMasked with CONS-Dfam_withRBRM | 119146348 | 13098118     | 0.1096   | 3460        | 6314  | 2673         | 670    |
-
