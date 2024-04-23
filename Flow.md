@@ -313,8 +313,7 @@ for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked; 
 	perl -nla -F"\t" -e "print for @F" <links.refine.tsv | spanr cover stdin -o cover.yml
 	echo "key,count" >links.count.csv
 	for n in 2 3 4-50; do
-		linkr filter links.refine.tsv -n ${n} -o stdout \
-			>links.copy${n}.tsv
+		linkr filter links.refine.tsv -n ${n} -o links.copy${n}.tsv
 		perl -nla -F"\t" -e "print for @F" <links.copy${n}.tsv | spanr cover stdin -o copy${n}.temp.yml
 		wc -l links.copy${n}.tsv \
 			| perl -nl -e "
@@ -340,5 +339,162 @@ for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked; 
 	cd ../..
 	rm -rf Processing Pairwise Results Chr*.fa chr* *.sh
 	cd ..
+done
+```
+
+```shell
+for i in Alyrata Ahalleri Bstricta Lsativum Rislandica Itinctoria Salba Tarvense Cviolacea Gbarbadense Ghirsutum Gmustelinum Tcacao; do
+	ln -s "$PWD"/../phyt/Atha_${i}.yml Atha_${i}.yml
+done
+for i in Aarenosa Cpapaya Thassleriana; do
+	ln -s "$PWD"/../ncbi/Atha_${i}.yml Atha_${i}.yml
+done
+
+parallel --keep-order --xapply -j 6 '
+	mkdir {1}_{2}
+	linkr filter ../{1}/{2}/Atha.links.tsv -n 2 -o {1}_{2}/links.2copy.tmp
+	perl ../split_lines.pl {1}_{2}/links.2copy.tmp {1}_{2}/links.2copy.tsv
+	rm {1}_{2}/links.2copy.tmp
+	perl ../classify_links.pl {1}_{2}/links.2copy.tsv \
+		Atha_{Alyrata,Aarenosa,Ahalleri,Bstricta,Lsativum,Rislandica,Itinctoria,Salba,Tarvense,Cpapaya,Cviolacea,Thassleriana,Gbarbadense,Ghirsutum,Gmustelinum,Tcacao}.yml \
+		0.5 >{1}_{2}/time-point.raw.tsv
+	cut -f 1,2 {1}_{2}/time-point.raw.tsv >{1}_{2}/time-point.0.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 3,4,5 >{1}_{2}/time-point.1.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 6,7,8 >{1}_{2}/time-point.2.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 9,10,11 >{1}_{2}/time-point.3.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 12,13,14 >{1}_{2}/time-point.4.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 15,16,17,18 >{1}_{2}/time-point.5.tmp
+	paste {1}_{2}/time-point.{0..5}.tmp >{1}_{2}/time-point.tsv
+	rm {1}_{2}/time-point.{0..5}.tmp {1}_{2}/time-point.raw.tsv
+' ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked
+```
+
+```shell
+for i in lastz biser; do
+	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
+		cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
+			| awk -va=1 '{
+				count0 = 0;
+				count1 = 0;
+				count2 = 0;
+				count3 = 0;
+				for (i = (a+1); i <= NF; i++) {
+					if ($i == 0) {
+							count0++;
+					} else if ($i == 1) {
+							count1++;
+					} else if ($i == 2) {
+							count2++;
+					} else if ($i == 3) {
+							count3++;
+					}
+				}
+				if (count0 >= 0 && count1 == 0 && count2 == 0 && count3 == 0) {
+					print;
+				}
+			}' | awk '{print $2 $3 $4 $5 $6 "\t" 0 "\t" $1}' >time1-0.txt
+		cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
+			| awk -va=1 '{
+				count0 = 0;
+				count1 = 0;
+				count2 = 0;
+				count3 = 0;
+				for (i = (a+1); i <= NF; i++) {
+					if ($i == 0) {
+							count0++;
+					} else if ($i == 1) {
+							count1++;
+					} else if ($i == 2) {
+							count2++;
+					} else if ($i == 3) {
+							count3++;
+					}
+				}
+				if (count0 >= 0 && count1 > 0 && count2 == 0 && count3 == 0) {
+					print;
+				}
+			}' | awk '{print $2 $3 $4 $5 $6 "\t" 1 "\t" $1}' >time1-1.txt
+		cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
+			| awk -va=1 '{
+				count0 = 0;
+				count1 = 0;
+				count2 = 0;
+				count3 = 0;
+				for (i = (a+1); i <= NF; i++) {
+					if ($i == 0) {
+							count0++;
+					} else if ($i == 1) {
+							count1++;
+					} else if ($i == 2) {
+							count2++;
+					} else if ($i == 3) {
+							count3++;
+					}
+				}
+				if (count0 >= 0 && count1 == 0 && count2 > 0 && count3 == 0) {
+					print;
+				}
+			}' | awk '{print $2 $3 $4 $5 $6 "\t" 2 "\t" $1}' >time1-2.txt
+		for k in {2..5}; do
+			cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
+				| awk -va="$k" '{
+					count0 = 0;
+					count1 = 0;
+					count2 = 0;
+					count3 = 0;
+					for (k = (a+1); k <= NF; k++) {
+						if ($k == 0) {
+								count0++;
+						} else if ($k == 1) {
+								count1++;
+						} else if ($k == 2) {
+								count2++;
+						} else if ($k == 3) {
+								count3++;
+						}
+					}
+					if (count0 >= 0 && count1 > 0 && count2 == 0 && count3 == 0) {
+						print;
+					}
+				}' | awk -va="$k" '$a==3{print $2 $3 $4 $5 $6 "\t" 1 "\t" $1}' >time"${k}"-1.txt
+			cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
+				| awk -va="$k" '{
+					count0 = 0;
+					count1 = 0;
+					count2 = 0;
+					count3 = 0;
+					for (k = (a+1); k <= NF; k++) {
+						if ($k == 0) {
+								count0++;
+						} else if ($k == 1) {
+								count1++;
+						} else if ($k == 2) {
+								count2++;
+						} else if ($k == 3) {
+								count3++;
+						}
+					}
+					if (count0 >= 0 && count1 == 0 && count2 > 0 && count3 == 0) {
+						print;
+					}
+				}' | awk -va="$k" '$a==3{print $2 $3 $4 $5 $6 "\t" 2 "\t" $1}' >time"${k}"-2.txt
+			cat time"${k}"-{1,2}.txt >${i}_${j}/time"${k}".txt
+		done
+		cat time1-{0,1,2}.txt >${i}_${j}/time1.txt
+		cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
+			| awk '$NF==3{print $2 $3 $4 $5 $6 $7 "\t" 0 "\t" $1}' >${i}_${j}/time6.txt
+		rm time*.txt
+		for k in {1..6}; do
+			perl ../fetch_timespot.pl ${i}_${j}/time"${k}".txt ${i}_${j}/time-point.tsv \
+				>${i}_${j}/time-point."${k}".tsv
+			awk '{print $1 "\t" $2 "\t" $3 "\t" NR ",1\n" $4 "\t" $5 "\t" $6 "\t" NR ",2"}' \
+				${i}_${j}/time-point."${k}".tsv \
+				| sort -k1,1 -k2,2n >${i}_${j}/time-point."${k}".sort.bed
+			perl ../arg_meth_link.pl \
+				../../MASED/Memory/AT.beta.1.tsv \
+				${i}_${j}/time-point."${k}".sort.bed \
+				${i}_${j}/time-point."${k}".beta.bed
+		done
+	done
 done
 ```

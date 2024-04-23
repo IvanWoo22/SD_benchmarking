@@ -15,7 +15,7 @@ open( my $LINE, "<", $ARGV[1] );
 while (<$LINE>) {
     chomp;
     my @tmp  = split "\t";
-    my $time = $tmp[2] . $tmp[3] . $tmp[4] . $tmp[5] . $tmp[6] . $tmp[7];
+    my $time = $tmp[2] . $tmp[3] . $tmp[4] . $tmp[5] . $tmp[6];
     if ( exists( $feature{$time} ) ) {
         if ( $feature{$time} <= 1 ) {
             print "$tmp[0]\t$tmp[1]\n";
