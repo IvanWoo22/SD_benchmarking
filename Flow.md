@@ -343,27 +343,25 @@ done
 ```
 
 ```shell
-for i in Alyrata Ahalleri Bstricta Lsativum Rislandica Itinctoria Salba Tarvense Cviolacea Gbarbadense Ghirsutum Gmustelinum Tcacao; do
+mkdir "sd_meth" && cd "sd_meth" || exit
+for i in Alyrata Ahalleri Bstricta Rislandica BrapaFPsc Esyriacum Dstrictus Cpapaya Cviolacea Tcacao Graimondii; do
 	ln -s "$PWD"/../phyt/Atha_${i}.yml Atha_${i}.yml
 done
-for i in Aarenosa Cpapaya Thassleriana; do
-	ln -s "$PWD"/../ncbi/Atha_${i}.yml Atha_${i}.yml
-done
 
-parallel --keep-order --xapply -j 6 '
+parallel -j 6 '
 	mkdir {1}_{2}
 	linkr filter ../{1}/{2}/Atha.links.tsv -n 2 -o {1}_{2}/links.2copy.tmp
 	perl ../split_lines.pl {1}_{2}/links.2copy.tmp {1}_{2}/links.2copy.tsv
 	rm {1}_{2}/links.2copy.tmp
 	perl ../classify_links.pl {1}_{2}/links.2copy.tsv \
-		Atha_{Alyrata,Aarenosa,Ahalleri,Bstricta,Lsativum,Rislandica,Itinctoria,Salba,Tarvense,Cpapaya,Cviolacea,Thassleriana,Gbarbadense,Ghirsutum,Gmustelinum,Tcacao}.yml \
+		Atha_{Alyrata,Ahalleri,Bstricta,Rislandica,BrapaFPsc,Esyriacum,Dstrictus,Cpapaya,Cviolacea,Tcacao,Graimondii}.yml \
 		0.5 >{1}_{2}/time-point.raw.tsv
 	cut -f 1,2 {1}_{2}/time-point.raw.tsv >{1}_{2}/time-point.0.tmp
-	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 3,4,5 >{1}_{2}/time-point.1.tmp
-	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 6,7,8 >{1}_{2}/time-point.2.tmp
-	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 9,10,11 >{1}_{2}/time-point.3.tmp
-	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 12,13,14 >{1}_{2}/time-point.4.tmp
-	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 15,16,17,18 >{1}_{2}/time-point.5.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 3,4 >{1}_{2}/time-point.1.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 5,6 >{1}_{2}/time-point.2.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 7,8,9 >{1}_{2}/time-point.3.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 10,11 >{1}_{2}/time-point.4.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 12,13 >{1}_{2}/time-point.5.tmp
 	paste {1}_{2}/time-point.{0..5}.tmp >{1}_{2}/time-point.tsv
 	rm {1}_{2}/time-point.{0..5}.tmp {1}_{2}/time-point.raw.tsv
 ' ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked
@@ -484,17 +482,35 @@ for i in lastz biser; do
 		cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
 			| awk '$NF==3{print $2 $3 $4 $5 $6 $7 "\t" 0 "\t" $1}' >${i}_${j}/time6.txt
 		rm time*.txt
-		for k in {1..6}; do
-			perl ../fetch_timespot.pl ${i}_${j}/time"${k}".txt ${i}_${j}/time-point.tsv \
-				>${i}_${j}/time-point."${k}".tsv
-			awk '{print $1 "\t" $2 "\t" $3 "\t" NR ",1\n" $4 "\t" $5 "\t" $6 "\t" NR ",2"}' \
-				${i}_${j}/time-point."${k}".tsv \
-				| sort -k1,1 -k2,2n >${i}_${j}/time-point."${k}".sort.bed
-			perl ../arg_meth_link.pl \
-				../../MASED/Memory/AT.beta.1.tsv \
-				${i}_${j}/time-point."${k}".sort.bed \
-				${i}_${j}/time-point."${k}".beta.bed
-		done
 	done
 done
+parallel -j 18 "
+	perl ../fetch_timespot.pl {1}_{2}/time{3}.txt {1}_{2}/time-point.tsv \\
+		>{1}_{2}/time-point.{3}.tsv
+	awk '{print \$1 \"\\t\" \$2 \"\\t\" \$3 \"\\t\" NR \",1\\n\" \$4 \"\\t\" \$5 \"\\t\" \$6 \"\\t\" NR \",2\"}' \\
+		{1}_{2}/time-point.{3}.tsv \\
+		| sort -k1,1 -k2,2n >{1}_{2}/time-point.{3}.sort.bed
+	perl ../arg_meth_link.pl \\
+		../../MASED/Memory/AT.beta.1.tsv \\
+		{1}_{2}/time-point.{3}.sort.bed \\
+		{1}_{2}/time-point.{3}.beta.bed
+" ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
+
+for i in lastz biser; do
+	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
+		awk -va=${i} -vb=${j} '{print b " " a "\t" ($3-$2) "\n" b " " a "\t" ($6-$5)}' \
+			${i}_${j}/links.2copy.tsv >>links2_length_distribution.tsv
+	done
+done
+
+for i in lastz biser; do
+	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
+		for k in {1..6}; do
+			awk -va=${i} -vb=${j} -vc="${k}" '{sum+=$3};END{print b " " a "\t" c "\t" sum}' ${i}_${j}/time"${k}".txt >>links2_timedistribution.tsv
+		done
+		awk -F"\t" -va=${i} -vb=${j} '$1==b" "a{sum+=$3};END{print b " " a "\t" sum}' links2_timedistribution.tsv >>links2_timedistributionallcount.tsv
+		wc -l <${i}_${j}/links.2copy.tsv >>links2_allcount.tsv
+	done
+done
+
 ```
