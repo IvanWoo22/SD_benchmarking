@@ -343,6 +343,26 @@ done
 ```
 
 ```shell
+awk '$1~/^[0-9]+$/{print $1 "\t" $2 "\t" $2 "\t" $7 "\t" $5 "\t" $3}' \
+	~/fat/NJU_seq/mrna.scored.Nm.{Pst,MgCl2}.tsv \
+	| sort -k1,1 -k2,2n \
+	| uniq >Atha.mrna.Nm.bed
+
+```
+
+```shell
+perl struct_split.pl Araport11_gene_type.txt ../MASED/BestLatestAtha/Araport11.format4.gff struct
+for i in promoter genebody gene; do
+	sort -k1,1 -k2,2n struct_${i}.raw.bed >struct_${i}.bed
+done
+rm ./*.raw.bed
+cut -f 4 Atha.mrna.Nm.bed \
+	| awk -F "/" '{print $1}' \
+	| sort | uniq >Atha.mrna.Nm.gene.list
+grep -f Atha.mrna.Nm.gene.list struct_gene.bed >struct_gene_Nm_gene.bed
+```
+
+```shell
 mkdir "sd_meth" && cd "sd_meth" || exit
 for i in Alyrata Ahalleri Bstricta Rislandica BrapaFPsc Esyriacum Dstrictus Cpapaya Cviolacea Tcacao Graimondii; do
 	ln -s "$PWD"/../phyt/Atha_${i}.yml Atha_${i}.yml
@@ -390,7 +410,7 @@ for i in lastz biser; do
 				if (count0 >= 0 && count1 == 0 && count2 == 0 && count3 == 0) {
 					print;
 				}
-			}' | awk '{print $2 $3 $4 $5 $6 "\t" 0 "\t" $1}' >time1-0.txt
+			}' | awk '{print $2 $3 $4 $5 $6 "\t" 0 "\t" $1}' >time1-0.tmp
 		cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
 			| awk -va=1 '{
 				count0 = 0;
@@ -411,7 +431,7 @@ for i in lastz biser; do
 				if (count0 >= 0 && count1 > 0 && count2 == 0 && count3 == 0) {
 					print;
 				}
-			}' | awk '{print $2 $3 $4 $5 $6 "\t" 1 "\t" $1}' >time1-1.txt
+			}' | awk '{print $2 $3 $4 $5 $6 "\t" 1 "\t" $1}' >time1-1.tmp
 		cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
 			| awk -va=1 '{
 				count0 = 0;
@@ -432,8 +452,30 @@ for i in lastz biser; do
 				if (count0 >= 0 && count1 == 0 && count2 > 0 && count3 == 0) {
 					print;
 				}
-			}' | awk '{print $2 $3 $4 $5 $6 "\t" 2 "\t" $1}' >time1-2.txt
+			}' | awk '{print $2 $3 $4 $5 $6 "\t" 2 "\t" $1}' >time1-2.tmp
+		cat time1-{0,1,2}.tmp >${i}_${j}/time1.txt
 		for k in {2..5}; do
+			cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
+				| awk -va="$k" '{
+					count0 = 0;
+					count1 = 0;
+					count2 = 0;
+					count3 = 0;
+					for (k = (a+1); k <= NF; k++) {
+						if ($k == 0) {
+								count0++;
+						} else if ($k == 1) {
+								count1++;
+						} else if ($k == 2) {
+								count2++;
+						} else if ($k == 3) {
+								count3++;
+						}
+					}
+					if (count0 >= 0 && count1 == 0 && count2 == 0 && count3 == 0) {
+						print;
+					}
+				}' | awk -va="$k" '$a==3{print $2 $3 $4 $5 $6 "\t" 0 "\t" $1}' >time"${k}"-0.tmp
 			cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
 				| awk -va="$k" '{
 					count0 = 0;
@@ -454,7 +496,7 @@ for i in lastz biser; do
 					if (count0 >= 0 && count1 > 0 && count2 == 0 && count3 == 0) {
 						print;
 					}
-				}' | awk -va="$k" '$a==3{print $2 $3 $4 $5 $6 "\t" 1 "\t" $1}' >time"${k}"-1.txt
+				}' | awk -va="$k" '$a==3{print $2 $3 $4 $5 $6 "\t" 1 "\t" $1}' >time"${k}"-1.tmp
 			cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
 				| awk -va="$k" '{
 					count0 = 0;
@@ -475,42 +517,109 @@ for i in lastz biser; do
 					if (count0 >= 0 && count1 == 0 && count2 > 0 && count3 == 0) {
 						print;
 					}
-				}' | awk -va="$k" '$a==3{print $2 $3 $4 $5 $6 "\t" 2 "\t" $1}' >time"${k}"-2.txt
-			cat time"${k}"-{1,2}.txt >${i}_${j}/time"${k}".txt
+				}' | awk -va="$k" '$a==3{print $2 $3 $4 $5 $6 "\t" 2 "\t" $1}' >time"${k}"-2.tmp
+			cat time"${k}"-{0,1,2}.tmp >${i}_${j}/time"${k}".txt
 		done
-		cat time1-{0,1,2}.txt >${i}_${j}/time1.txt
 		cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
 			| awk '$NF==3{print $2 $3 $4 $5 $6 $7 "\t" 0 "\t" $1}' >${i}_${j}/time6.txt
-		rm time*.txt
+		rm time*.tmp
+		awk -va=${i} -vb=${j} '{print b "\t" a "\t" ($3-$2) "\n" b "\t" a "\t" ($6-$5)}' \
+			${i}_${j}/links.2copy.tsv >>links2_length_distribution.tsv
+		for k in {1..6}; do
+			awk -va=${i} -vb=${j} -vc="${k}" '{sum+=$3};END{print b "\t" a "\t" c "\t" sum}' ${i}_${j}/time"${k}".txt >>links2_timedistribution.tsv
+		done
+		awk -F"\t" -va=${i} -vb=${j} '$1==b&&$2==a{sum+=$4};END{print b "\t" a "\t" sum}' links2_timedistribution.tsv >>links2_timedistributionallcount.tsv
+		wc -l <${i}_${j}/links.2copy.tsv >>links2_allcount.tsv
 	done
 done
-parallel -j 18 "
+paste links2_timedistributionallcount.tsv links2_allcount.tsv >links2_counts_in_timeline.tsv
+rm links2_timedistributionallcount.tsv links2_allcount.tsv
+```
+
+```shell
+parallel -j 24 "
 	perl ../fetch_timespot.pl {1}_{2}/time{3}.txt {1}_{2}/time-point.tsv \\
 		>{1}_{2}/time-point.{3}.tsv
-	awk '{print \$1 \"\\t\" \$2 \"\\t\" \$3 \"\\t\" NR \",1\\n\" \$4 \"\\t\" \$5 \"\\t\" \$6 \"\\t\" NR \",2\"}' \\
+	awk '\$7==1{print \$1 \"\\t\" \$2 \"\\t\" \$3 \"\\t\" NR \"\\t1\\n\" \$4 \"\\t\" \$5 \"\\t\" \$6 \"\\t\" NR \"\\t2\"};
+		\$7==0{print \$1 \"\\t\" \$2 \"\\t\" \$3 \"\\t\" NR \"\\t0\\n\" \$4 \"\\t\" \$5 \"\\t\" \$6 \"\\t\" NR \"\\t0\"};' \\
 		{1}_{2}/time-point.{3}.tsv \\
 		| sort -k1,1 -k2,2n >{1}_{2}/time-point.{3}.sort.bed
+" ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
+```
+
+```shell
+parallel -j 24 "
 	perl ../arg_meth_link.pl \\
 		../../MASED/Memory/AT.beta.1.tsv \\
 		{1}_{2}/time-point.{3}.sort.bed \\
 		{1}_{2}/time-point.{3}.beta.bed
 " ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
 
+rm time-point.beta.all.bed
 for i in lastz biser; do
 	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
-		awk -va=${i} -vb=${j} '{print b " " a "\t" ($3-$2) "\n" b " " a "\t" ($6-$5)}' \
-			${i}_${j}/links.2copy.tsv >>links2_length_distribution.tsv
+		rm ${i}_${j}/time-point.beta.bed
+		for k in {1..6}; do
+			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $6 "\t" $7}' \
+				${i}_${j}/time-point.${k}.beta.bed >>${i}_${j}/time-point.beta.bed
+			awk -va=${i} -vb=${j} -vc="${k}" '{print b "\t" a "\t" $1 "\t" $2 "\t" $3 "\t" c "\t" $4 "\t" $5 "\t" $6 "\t" $7}' \
+				${i}_${j}/time-point.${k}.beta.bed >>time-point.beta.all.bed
+		done
+	done
+done
+```
+
+```shell
+perl struct_split.pl \
+Araport11_gene_type.txt \
+../MASED/BestLatestAtha/Araport11.format4.gff \
+struct
+
+for i in promoter genebody gene; do
+sort -k1,1 -k2,2n struct_${i}.raw.bed >struct_${i}.bed
+done
+
+parallel -j 24 "
+	perl ../promotor_intsec.pl \
+		../struct_promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.prom.bed
+	perl ../arg_meth_link_neo.pl \
+		../../MASED/Memory/AT.beta.1.tsv \
+		{1}_{2}/time-point.{3}.prom.bed \
+		{1}_{2}/time-point.{3}.prom.beta.bed 6
+" ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
+
+rm time-point.prom.beta.all.bed
+for i in lastz biser; do
+	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
+		rm ${i}_${j}/time-point.prom.beta.bed
+		for k in {1..6}; do
+			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
+				${i}_${j}/time-point.${k}.prom.beta.bed >>${i}_${j}/time-point.prom.beta.bed
+			awk -va=${i} -vb=${j} -vc="${k}" '{print b "\t" a "\t" $1 "\t" $2 "\t" $3 "\t" c "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
+				${i}_${j}/time-point.${k}.prom.beta.bed >>time-point.prom.beta.all.bed
+		done
 	done
 done
 
+```
+
+
+```shell
+rm links2_cover_in_timeline.tsv
 for i in lastz biser; do
 	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
 		for k in {1..6}; do
-			awk -va=${i} -vb=${j} -vc="${k}" '{sum+=$3};END{print b " " a "\t" c "\t" sum}' ${i}_${j}/time"${k}".txt >>links2_timedistribution.tsv
+			awk '{print $1 ":" $2 "-" $3}' ${i}_${j}/time-point."${k}".sort.bed \
+				| spanr cover stdin -o temp.yml
+			echo -ne "${j}\t${i}\t${k}\t" >>links2_cover_in_timeline.tsv
+			spanr stat ../../MASED/revis/RMasked/Ensembl/Atha/chr.sizes \
+				--all temp.yml | awk -F "," 'NR==2{printf $2 "\t"}' >>links2_cover_in_timeline.tsv
+			rm temp.yml
+			closestBed -d -a ${i}_${j}/time-point."${k}".sort.bed \
+				-b ../Atha.mrna.Nm.bed -t all \
+				| awk '$NF==0' | cut -f 6-8 \
+				| sort | uniq | wc -l >>links2_cover_in_timeline.tsv
 		done
-		awk -F"\t" -va=${i} -vb=${j} '$1==b" "a{sum+=$3};END{print b " " a "\t" sum}' links2_timedistribution.tsv >>links2_timedistributionallcount.tsv
-		wc -l <${i}_${j}/links.2copy.tsv >>links2_allcount.tsv
 	done
 done
-
 ```
