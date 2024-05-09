@@ -18,13 +18,13 @@ while (<$LINE>) {
     my $time = $tmp[2] . $tmp[3] . $tmp[4] . $tmp[5] . $tmp[6];
     if ( exists( $feature{$time} ) ) {
         if ( $feature{$time} == 0 ) {
-            print "$tmp[0]\t$tmp[1]\t0\n";
+            print "$tmp[0]\t$tmp[1]\t0\t$time\n";
         }
         elsif ( $feature{$time} == 1 ) {
-            print "$tmp[0]\t$tmp[1]\t1\n";
+            print "$tmp[0]\t$tmp[1]\t1\t$time\n";
         }
         elsif ( $feature{$time} == 2 ) {
-            print "$tmp[1]\t$tmp[0]\t1\n";
+            print "$tmp[1]\t$tmp[0]\t1\t$time\n";
         }
     }
 }

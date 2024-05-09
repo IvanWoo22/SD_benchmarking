@@ -11,9 +11,9 @@ while (<$LIST>) {
 }
 open my $GFF, "<", $ARGV[1];
 my $BED_SUFFIX = $ARGV[2];
-open my $BED_PMT,      ">", $BED_SUFFIX . "_promoter.raw.bed";
-open my $BED_GENEBODY, ">", $BED_SUFFIX . "_genebody.raw.bed";
-open my $BED_GENE,     ">", $BED_SUFFIX . "_gene.raw.bed";
+open my $BED_PMT,      ">", $BED_SUFFIX . "/promoter.raw.bed";
+open my $BED_GENEBODY, ">", $BED_SUFFIX . "/genebody.raw.bed";
+open my $BED_GENE,     ">", $BED_SUFFIX . "/gene.raw.bed";
 my %type_check = (
     "novel_transcribed_region"     => 1,
     "long_noncoding_rna"           => 1,

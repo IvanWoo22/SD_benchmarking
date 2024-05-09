@@ -167,13 +167,13 @@ cd .. && rm -rf "smcover"
 cd ..
 ```
 
-|                  | chrLength |     size | coverage |
-|:-----------------|----------:|---------:|---------:|
-| TAIR10_unmasked  | 119146348 |   186207 |   0.0016 |
-| TAIR10_rmmasked  | 119146348 | 21324693 |   0.1790 |
-| TAIR10_E58masked | 119146348 | 38123558 |   0.3200 |
-| ColCEN_unmasked  | 131559676 |        0 |   0.0000 |
-| ColCEN_rmmasked  | 131559676 | 33290733 |   0.2530 |
+|                  | chr length | masked size | masked coverage |
+|:-----------------|-----------:|------------:|----------------:|
+| TAIR10_unmasked  |  119146348 |      186207 |          0.0016 |
+| TAIR10_rmmasked  |  119146348 |    21324693 |          0.1790 |
+| TAIR10_E58masked |  119146348 |    38123558 |          0.3200 |
+| ColCEN_unmasked  |  131559676 |           0 |          0.0000 |
+| ColCEN_rmmasked  |  131559676 |    33290733 |          0.2530 |
 
 ```shell
 mkdir "biser" && cd "biser" || exit
@@ -343,23 +343,29 @@ done
 ```
 
 ```shell
+mkdir struct
+perl struct_split.pl \
+	Araport11_gene_type.txt \
+	../MASED/BestLatestAtha/Araport11.format4.gff \
+	struct
+
+for i in promoter genebody gene; do
+	sort -k1,1 -k2,2n struct/${i}.raw.bed >struct/${i}.bed
+	for j in pseudogene noncoding_rna novel_transcribed_region protein_coding; do
+		grep ${j} struct/${i}.bed >struct/${j}.${i}.bed
+	done
+done
+
 awk '$1~/^[0-9]+$/{print $1 "\t" $2 "\t" $2 "\t" $7 "\t" $5 "\t" $3}' \
 	~/fat/NJU_seq/mrna.scored.Nm.{Pst,MgCl2}.tsv \
 	| sort -k1,1 -k2,2n \
 	| uniq >Atha.mrna.Nm.bed
-
-```
-
-```shell
-perl struct_split.pl Araport11_gene_type.txt ../MASED/BestLatestAtha/Araport11.format4.gff struct
-for i in promoter genebody gene; do
-	sort -k1,1 -k2,2n struct_${i}.raw.bed >struct_${i}.bed
-done
-rm ./*.raw.bed
 cut -f 4 Atha.mrna.Nm.bed \
 	| awk -F "/" '{print $1}' \
 	| sort | uniq >Atha.mrna.Nm.gene.list
-grep -f Atha.mrna.Nm.gene.list struct_gene.bed >struct_gene_Nm_gene.bed
+grep -f Atha.mrna.Nm.gene.list struct/gene.bed >struct/withNm.gene.bed
+
+rm struct/*.raw.bed
 ```
 
 ```shell
@@ -541,9 +547,12 @@ parallel -j 24 "
 	perl ../fetch_timespot.pl {1}_{2}/time{3}.txt {1}_{2}/time-point.tsv \\
 		>{1}_{2}/time-point.{3}.tsv
 	awk '\$7==1{print \$1 \"\\t\" \$2 \"\\t\" \$3 \"\\t\" NR \"\\t1\\n\" \$4 \"\\t\" \$5 \"\\t\" \$6 \"\\t\" NR \"\\t2\"};
-		\$7==0{print \$1 \"\\t\" \$2 \"\\t\" \$3 \"\\t\" NR \"\\t0\\n\" \$4 \"\\t\" \$5 \"\\t\" \$6 \"\\t\" NR \"\\t0\"};' \\
+		\$7==0{print \$1 \"\\t\" \$2 \"\\t\" \$3 \"\\t\" NR \"\\t0\\n\" \$4 \"\\t\" \$5 \"\\t\" \$6 \"\\t\" NR \"\\t0\"}' \\
 		{1}_{2}/time-point.{3}.tsv \\
 		| sort -k1,1 -k2,2n >{1}_{2}/time-point.{3}.sort.bed
+	awk '{print \$1 \"\\t\" \$2 \"\\t\" \$3 \"\\t\" NR \"\\t\" \$8 \"\\n\" \$4 \"\\t\" \$5 \"\\t\" \$6 \"\\t\" NR \"\\t\" \$8}' \\
+		{1}_{2}/time-point.{3}.tsv \\
+		| sort -k1,1 -k2,2n >{1}_{2}/time-point.{3}.evolution.bed
 " ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
 ```
 
@@ -555,10 +564,10 @@ parallel -j 24 "
 		{1}_{2}/time-point.{3}.beta.bed
 " ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
 
-rm time-point.beta.all.bed
+rm time-point.beta.all.bed 2>/dev/null
 for i in lastz biser; do
 	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
-		rm ${i}_${j}/time-point.beta.bed
+		rm ${i}_${j}/time-point.beta.bed 2>/dev/null
 		for k in {1..6}; do
 			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $6 "\t" $7}' \
 				${i}_${j}/time-point.${k}.beta.bed >>${i}_${j}/time-point.beta.bed
@@ -570,39 +579,80 @@ done
 ```
 
 ```shell
-perl struct_split.pl \
-Araport11_gene_type.txt \
-../MASED/BestLatestAtha/Araport11.format4.gff \
-struct
-
-for i in promoter genebody gene; do
-sort -k1,1 -k2,2n struct_${i}.raw.bed >struct_${i}.bed
-done
-
-parallel -j 24 "
+parallel -j 20 "
 	perl ../promotor_intsec.pl \
-		../struct_promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.prom.bed
+		../struct/promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.prom.bed
 	perl ../arg_meth_link_neo.pl \
 		../../MASED/Memory/AT.beta.1.tsv \
 		{1}_{2}/time-point.{3}.prom.bed \
 		{1}_{2}/time-point.{3}.prom.beta.bed 6
 " ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
 
-rm time-point.prom.beta.all.bed
+rm time-point.prom.beta.all.bed 2>/dev/null
 for i in lastz biser; do
 	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
-		rm ${i}_${j}/time-point.prom.beta.bed
+		rm ${i}_${j}/time-point.prom.beta.bed 2>/dev/null
 		for k in {1..6}; do
 			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
-				${i}_${j}/time-point.${k}.prom.beta.bed >>${i}_${j}/time-point.prom.beta.bed
+				${i}_${j}/time-point.${k}.prom.beta.bed \
+				>>${i}_${j}/time-point.prom.beta.bed
 			awk -va=${i} -vb=${j} -vc="${k}" '{print b "\t" a "\t" $1 "\t" $2 "\t" $3 "\t" c "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
-				${i}_${j}/time-point.${k}.prom.beta.bed >>time-point.prom.beta.all.bed
+				${i}_${j}/time-point.${k}.prom.beta.bed \
+				>>time-point.prom.beta.all.bed
+		done
+	done
+done
+```
+
+```shell
+parallel -j 20 "
+	perl ../promotor_intsec.pl \
+		../struct/pseudogene.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pseudo.prom.bed
+	perl ../arg_meth_link_neo.pl \
+		../../MASED/Memory/AT.beta.1.tsv \
+		{1}_{2}/time-point.{3}.pseudo.prom.bed \
+		{1}_{2}/time-point.{3}.pseudo.prom.beta.bed 6
+" ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
+
+rm time-point.pseudo.prom.beta.all.bed 2>/dev/null
+for i in lastz biser; do
+	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
+		rm ${i}_${j}/time-point.pseudo.prom.beta.bed 2>/dev/null
+		for k in {1..6}; do
+			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
+				${i}_${j}/time-point.${k}.pseudo.prom.beta.bed \
+				>>${i}_${j}/time-point.pseudo.prom.beta.bed
+			awk -va=${i} -vb=${j} -vc="${k}" '{print b "\t" a "\t" $1 "\t" $2 "\t" $3 "\t" c "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
+				${i}_${j}/time-point.${k}.pseudo.prom.beta.bed \
+				>>time-point.pseudo.prom.beta.all.bed
 		done
 	done
 done
 
-```
+parallel -j 20 "
+	perl ../promotor_intsec.pl \
+		../struct/protein_coding.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pc.prom.bed
+	perl ../arg_meth_link_neo.pl \
+		../../MASED/Memory/AT.beta.1.tsv \
+		{1}_{2}/time-point.{3}.pc.prom.bed \
+		{1}_{2}/time-point.{3}.pc.prom.beta.bed 6
+" ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
 
+rm time-point.pc.prom.beta.all.bed 2>/dev/null
+for i in lastz biser; do
+	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
+		rm ${i}_${j}/time-point.pc.prom.beta.bed 2>/dev/null
+		for k in {1..6}; do
+			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
+				${i}_${j}/time-point.${k}.pc.prom.beta.bed \
+				>>${i}_${j}/time-point.pc.prom.beta.bed
+			awk -va=${i} -vb=${j} -vc="${k}" '{print b "\t" a "\t" $1 "\t" $2 "\t" $3 "\t" c "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
+				${i}_${j}/time-point.${k}.pc.prom.beta.bed \
+				>>time-point.pc.prom.beta.all.bed
+		done
+	done
+done
+```
 
 ```shell
 rm links2_cover_in_timeline.tsv
