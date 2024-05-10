@@ -1,8 +1,16 @@
+### Prepare the reference sequences of TAIR10 and ColCEN and other info data.
+
 ```shell
-mkdir "reference" && cd "reference" || exit
-wget https://www.arabidopsis.org/download_files/Genes/TAIR10_genome_release/TAIR10_chromosome_files/TAIR10_chr_all.fas.gz
-wget https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna_sm.toplevel.fa.gz
-wget https://www.arabidopsis.org/download_files/Genes/Col-CEN%20genome%20assembly%20release/ColCEN.fasta
+mkdir "preref" && cd "preref" || exit
+cp ../data/TAIR10_chr_all.fas.gz .
+cp ../data/Arabidopsis_thaliana.TAIR10.dna_sm.toplevel.fa.gz .
+cp ../data/Col-CEN_v1.2.fasta.gz .
+
+#Or, re-download:  
+#wget https://www.arabidopsis.org/download_files/Genes/TAIR10_genome_release/TAIR10_chromosome_files/TAIR10_chr_all.fas.gz
+#wget https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/current/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna_sm.toplevel.fa.gz
+#wget https://github.com/schatzlab/Col-CEN/blob/main/v1.2/Col-CEN_v1.2.fasta.gz
+#ARABIDOPSIS.ORG has been upgraded recently and might need to be downloaded manually.
 
 pigz -dc TAIR10_chr_all.fas.gz | faops split-name stdin .
 rm ChrC.fa ChrM.fa
@@ -12,161 +20,70 @@ pigz -dc Arabidopsis_thaliana.TAIR10.dna_sm.toplevel.fa.gz | sed 's/>/>Chr/g' | 
 rm ChrPt.fa ChrMt.fa
 cat Chr*.fa >TAIR10_E58masked.fa
 rm Chr*.fa
-faops split-name ColCEN.fasta .
+pigz -dc Col-CEN_v1.2.fasta.gz | faops split-name stdin .
 rm ChrC.fa ChrM.fa
 cat Chr*.fa >ColCEN_unmasked.fa
-rm Chr*.fa ColCEN.fasta
-rm TAIR10_chr_all.fas.gz Arabidopsis_thaliana.TAIR10.dna_sm.toplevel.fa.gz
+rm Chr*.fa
+rm TAIR10_chr_all.fas.gz Arabidopsis_thaliana.TAIR10.dna_sm.toplevel.fa.gz Col-CEN_v1.2.fasta.gz
 ```
+
+### Mask the reference sequences.
 
 ```shell
-mkdir "rm" && cd "rm" || exit
-faops split-name ../TAIR10_unmasked.fa .
+parallel -j 2 '
+	mkdir {}_rm && cd {}_rm || exit
+	faops split-name ../{}_unmasked.fa .
+	for j in 1 2 3 4 5; do
+		RepeatMasker -spec arabidopsis -pa 12 -s -xsmall -e ncbi -dir . Chr${j}.fa
+		RM2Bed.py -d . Chr${j}.fa.out
+		trf Chr${j}.fa 2 7 7 80 10 50 15 -l 25 -h -ngs >Chr${j}.fa.dat
+	done
+	cat Chr*.fa_rm.bed | bedtools sort -i - >repeatmasker.out.bed
+	python ../../trf_merge.py Chr{1..5}.fa.dat trf.bed
+
+	cat trf.bed repeatmasker.out.bed \
+		| cut -f 1-3 >>tmp.msk.bed
+	cut -f 1-3 tmp.msk.bed \
+		| bedtools sort -i - \
+		| bedtools merge -i - \
+		| awk '\''$3-$2 > 2000 {print $0}'\'' \
+		| bedtools merge -d 100 -i - >tmp2.msk.bed
+	cut -f 1-3 tmp.msk.bed tmp2.msk.bed \
+		| bedtools sort -i - \
+		| bedtools merge -i - \
+		| seqtk seq -l 50 -M /dev/stdin ../{}_unmasked.fa >../{}_rmmasked.fa
+	rm Chr* repeatmasker.out.bed trf.bed tmp.msk.bed tmp2.msk.bed
+' ::: TAIR10 ColCEN
+rm -r *_rm
 ```
+
+### Masked coverage.
 
 ```shell
-for i in 1 2 3 4 5; do
-	RepeatMasker -spec arabidopsis -pa 16 -s -xsmall -e ncbi -dir . Chr${i}.fa
-	RM2Bed.py -d . Chr${i}.fa.out
-done
-cat Chr*.fa_rm.bed >TAIR10.rm.fofn
-cat TAIR10.rm.fofn | bedtools sort -i - >TAIR10_repeatmasker.out.bed
-```
-
-```shell
-for i in 1 2 3 4 5; do
-	trf Chr${i}.fa 2 7 7 80 10 50 15 -l 25 -h -ngs >Chr${i}.fa.dat
-done
-```
-
-```python
-import sys
-import pandas as pd
-
-input_dats = ["Chr1.fa.dat", "Chr2.fa.dat", "Chr3.fa.dat", "Chr4.fa.dat", "Chr5.fa.dat"]
-output_bed = "TAIR10_trf.bed"
-header = '#chr start end PeriodSize CopyNumber ConsensusSize PercentMatches PercentIndels Score A C G T Entropy Motif Sequence'.split()
-
-trf = []
-for datf in input_dats:
-    chrom = None
-    sys.stderr.write("\r" + datf)
-    with open(datf, 'r') as dat:
-        for line in dat:
-            splitline = line.split()
-            if line.startswith("Sequence:"):
-                chrom = int(line.split()[1].strip())
-            elif line.startswith("@"):
-                chrom = splitline[0][1:].strip()
-            else:
-                try:
-                    int(splitline[0])
-                except ValueError:
-                    continue
-                trf.append([chrom] + splitline[0: (len(header) - 1)])
-
-trf_df = pd.DataFrame(trf, columns=header)
-trf_df["start"] = trf_df["start"].astype(int)
-trf_df.sort_values(by=["#chr", "start"], inplace=True)
-trf_df.to_csv(output_bed, sep="\t", index=False)
-```
-
-```shell
-cat TAIR10_trf.bed TAIR10_repeatmasker.out.bed \
-	| cut -f 1-3 >>TAIR10.tmp.msk.bed
-cut -f 1-3 TAIR10.tmp.msk.bed \
-	| bedtools sort -i - \
-	| bedtools merge -i - \
-	| awk '$3-$2 > 2000 {print $0}' \
-	| bedtools merge -d 100 -i - >TAIR10.tmp2.msk.bed
-cut -f 1-3 TAIR10.tmp.msk.bed TAIR10.tmp2.msk.bed \
-	| bedtools sort -i - \
-	| bedtools merge -i - \
-	| seqtk seq -l 50 -M /dev/stdin ../TAIR10_unmasked.fa >../TAIR10_rmmasked.fa
-rm Chr* TAIR10_repeatmasker.out.bed TAIR10_trf.bed TAIR10.tmp.msk.bed TAIR10.tmp2.msk.bed TAIR10.rm.fofn
-```
-
-```shell
-faops split-name ../ColCEN_unmasked.fa .
-```
-
-```shell
-for i in 1 2 3 4 5; do
-	RepeatMasker -spec arabidopsis -pa 16 -s -xsmall -e ncbi -dir . Chr${i}.fa
-	RM2Bed.py -d . Chr${i}.fa.out
-done
-cat Chr*.fa_rm.bed >ColCEN.rm.fofn
-cat ColCEN.rm.fofn | bedtools sort -i - >ColCEN_repeatmasker.out.bed
-```
-
-```shell
-for i in 1 2 3 4 5; do
-	trf Chr${i}.fa 2 7 7 80 10 50 15 -l 25 -h -ngs >Chr${i}.fa.dat
-done
-```
-
-```python
-import sys
-import pandas as pd
-
-input_dats = ["Chr1.fa.dat", "Chr2.fa.dat", "Chr3.fa.dat", "Chr4.fa.dat", "Chr5.fa.dat"]
-output_bed = "ColCEN_trf.bed"
-header = '#chr start end PeriodSize CopyNumber ConsensusSize PercentMatches PercentIndels Score A C G T Entropy Motif Sequence'.split()
-
-trf = []
-for datf in input_dats:
-    chrom = None
-    sys.stderr.write("\r" + datf)
-    with open(datf, 'r') as dat:
-        for line in dat:
-            splitline = line.split()
-            if line.startswith("Sequence:"):
-                chrom = int(line.split()[1].strip())
-            elif line.startswith("@"):
-                chrom = splitline[0][1:].strip()
-            else:
-                try:
-                    int(splitline[0])
-                except ValueError:
-                    continue
-                trf.append([chrom] + splitline[0: (len(header) - 1)])
-
-trf_df = pd.DataFrame(trf, columns=header)
-trf_df["start"] = trf_df["start"].astype(int)
-trf_df.sort_values(by=["#chr", "start"], inplace=True)
-trf_df.to_csv(output_bed, sep="\t", index=False)
-```
-
-```shell
-cat ColCEN_trf.bed ColCEN_repeatmasker.out.bed \
-	| cut -f 1-3 >>ColCEN.tmp.msk.bed
-cut -f 1-3 ColCEN.tmp.msk.bed \
-	| bedtools sort -i - \
-	| bedtools merge -i - \
-	| awk '$3-$2 > 2000 {print $0}' \
-	| bedtools merge -d 100 -i - >ColCEN.tmp2.msk.bed
-cut -f 1-3 ColCEN.tmp.msk.bed ColCEN.tmp2.msk.bed \
-	| bedtools sort -i - \
-	| bedtools merge -i - \
-	| seqtk seq -l 50 -M /dev/stdin ../ColCEN_unmasked.fa >../ColCEN_rmmasked.fa
-rm Chr* ColCEN_repeatmasker.out.bed ColCEN_trf.bed ColCEN.tmp.msk.bed ColCEN.tmp2.msk.bed ColCEN.rm.fofn
-```
-
-```shell
-cd .. && rm -rf "rm"
+echo ",chr length,masked size,masked coverage" >masked_cover.csv
 mkdir "smcover" && cd "smcover" || exit
+
 egaz prepseq ../TAIR10_unmasked.fa -o .
-faops masked ../TAIR10_unmasked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
-faops masked ../TAIR10_rmmasked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
-faops masked ../TAIR10_E58masked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
-rm chr.* Chr.*
+for i in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
+	{
+		echo -ne "${i},"
+		faops masked ../${i}.fa | spanr cover stdin \
+			| spanr stat --all chr.sizes stdin \
+			| tail -1
+	} >>../masked_cover.csv
+done
+rm chr.* Chr*
 egaz prepseq ../ColCEN_unmasked.fa -o .
-faops masked ../ColCEN_unmasked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
-faops masked ../ColCEN_rmmasked.fa | spanr cover stdin | spanr stat --all chr.sizes stdin
+{
+	awk '{sum+=$2};END{print "ColCEN_unmasked," sum ",0,0.0000"}' chr.sizes
+	echo -ne "ColCEN_rmmasked,"
+	faops masked ../ColCEN_rmmasked.fa | spanr cover stdin \
+		| spanr stat --all chr.sizes stdin \
+		| tail -1
+} >>../masked_cover.csv
 cd .. && rm -rf "smcover"
 cd ..
 ```
-
 |                  | chr length | masked size | masked coverage |
 |:-----------------|-----------:|------------:|----------------:|
 | TAIR10_unmasked  |  119146348 |      186207 |          0.0016 |
@@ -175,33 +92,28 @@ cd ..
 | ColCEN_unmasked  |  131559676 |           0 |          0.0000 |
 | ColCEN_rmmasked  |  131559676 |    33290733 |          0.2530 |
 
-```shell
-mkdir "biser" && cd "biser" || exit
-for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked; do
-	mkdir ${PREFIX}
-	biser -t 20 -o ${PREFIX}/biser_out ../reference/${PREFIX}.fa
-	awk '{print $1"("$9"):"$2"-"$3"\t"$4"("$10"):"$5"-"$6}' ${PREFIX}/biser_out \
-		| linkr sort stdin \
-		| linkr clean stdin -o ${PREFIX}/links.sort.clean.tsv
-	rgr merge ${PREFIX}/links.sort.clean.tsv -c 0.95 \
-		-o ${PREFIX}/links.merge.tsv
-	linkr clean ${PREFIX}/links.sort.clean.tsv \
-		-r ${PREFIX}/links.merge.tsv --bundle 500 \
-		-o ${PREFIX}/links.clean.tsv
-	linkr connect ${PREFIX}/links.clean.tsv -r 0.05 \
-		| linkr filter stdin -r 0.05 -o ${PREFIX}/links.filter.tsv
-done
-cd ..
-```
+### `biser` for SD.
 
 ```shell
-for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked; do
-	egaz prepseq ../reference/${PREFIX}.fa -o ${PREFIX}/
-	cd ${PREFIX} || exit
-	perl -nla -F"\t" -e "print for @F" <links.filter.tsv | spanr cover stdin -o cover.yml
+mkdir "biser" && cd "biser" || exit
+parallel -j 6 '
+	mkdir {} && cd {} || exit
+	biser -t 4 -o biser_out ../../preref/{}.fa
+	awk '\''{print $1"("$9"):"$2"-"$3"\t"$4"("$10"):"$5"-"$6}'\'' biser_out \
+		| linkr sort stdin \
+		| linkr clean stdin -o links.sort.clean.tsv
+	rgr merge links.sort.clean.tsv -c 0.95 \
+		-o links.merge.tsv
+	linkr clean links.sort.clean.tsv \
+		-r links.merge.tsv --bundle 500 \
+		-o links.clean.tsv
+	linkr connect links.clean.tsv -r 0.05 \
+		| linkr filter stdin -r 0.05 -o links.tsv
+	egaz prepseq ../../preref/{}.fa -o .
+	perl -nla -F"\t" -e "print for @F" <links.tsv | spanr cover stdin -o cover.yml
 	echo "key,count" >links.count.csv
 	for n in 2 3 4-50; do
-		linkr filter links.filter.tsv -n ${n} -o links.copy${n}.tsv
+		linkr filter links.tsv -n ${n} -o links.copy${n}.tsv
 		perl -nla -F"\t" -e "print for @F" <links.copy${n}.tsv | spanr cover stdin -o copy${n}.temp.yml
 		wc -l links.copy${n}.tsv \
 			| perl -nl -e "
@@ -217,15 +129,10 @@ for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked C
 	spanr stat chr.sizes copy.yml --all -o links.copy.csv
 	fasops mergecsv links.copy.csv links.count.csv --concat -o copy.csv
 	spanr stat chr.sizes cover.yml -o cover.yml.csv
-	mv cover.yml Atha.cover.yml
-	mv copy.yml Atha.copy.yml
-	mv cover.yml.csv Atha.cover.csv
-	mv copy.csv Atha.copy.csv
-	mv links.filter.tsv Atha.links.tsv
-	rm -rf Chr*.fa chr* ./*.temp.yml ./*.links.merge.tsv ./*.links.sort.clean.tsv
-	cd ..
-done
+	rm -rf Chr*.fa chr* ./*.temp.yml ./links.merge.tsv ./links.sort.clean.tsv
+' ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked
 ```
+
 
 ```shell
 mkdir "lastz" && cd "lastz" || exit
@@ -233,7 +140,7 @@ echo 'strain,strain_id,species,species_id,genus,genus_id,family,family_id,order,
 Atha,3702,"Arabidopsis thaliana",3702,Arabidopsis,3701,Brassicaceae,3700,Brassicales,3699' >ensembl_taxon.csv
 for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked; do
 	mkdir ${PREFIX}
-	egaz prepseq ../reference/${PREFIX}.fa -o ${PREFIX}/
+	egaz prepseq ../preref/${PREFIX}.fa -o ${PREFIX}/
 	egaz template ${PREFIX}/ --self -o ${PREFIX}/ --taxon ./ensembl_taxon.csv --circos --parallel 16 -v
 	cd ${PREFIX} || exit
 	mkdir -p Pairwise

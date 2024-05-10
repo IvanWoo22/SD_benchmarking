@@ -1,47 +1,42 @@
-parallel -j 20 "
-	perl ../promotor_intsec.pl \
-		../struct/pseudogene.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pseudo.prom.bed
-	perl ../arg_meth_link_neo.pl \
-		../../MASED/Memory/AT.beta.1.tsv \
-		{1}_{2}/time-point.{3}.pseudo.prom.bed \
-		{1}_{2}/time-point.{3}.pseudo.prom.beta.bed 6
-" ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
-
-rm time-point.pseudo.prom.beta.all.bed 2>/dev/null
-for i in lastz biser; do
-	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
-		rm ${i}_${j}/time-point.pseudo.prom.beta.bed 2>/dev/null
-		for k in {1..6}; do
-			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
-				${i}_${j}/time-point.${k}.pseudo.prom.beta.bed \
-				>>${i}_${j}/time-point.pseudo.prom.beta.bed
-			awk -va=${i} -vb=${j} -vc="${k}" '{print b "\t" a "\t" $1 "\t" $2 "\t" $3 "\t" c "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
-				${i}_${j}/time-point.${k}.pseudo.prom.beta.bed \
-				>>time-point.pseudo.prom.beta.all.bed
-		done
+mkdir "biser" && cd "biser" || exit
+for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked; do
+	mkdir ${PREFIX} && cd ${PREFIX} || exit
+	biser -t 20 -o biser_out ../../preref/${PREFIX}.fa
+	awk '{print $1"("$9"):"$2"-"$3"\t"$4"("$10"):"$5"-"$6}' biser_out \
+		| linkr sort stdin \
+		| linkr clean stdin -o links.sort.clean.tsv
+	rgr merge links.sort.clean.tsv -c 0.95 \
+		-o links.merge.tsv
+	linkr clean links.sort.clean.tsv \
+		-r links.merge.tsv --bundle 500 \
+		-o links.clean.tsv
+	linkr connect links.clean.tsv -r 0.05 \
+		| linkr filter stdin -r 0.05 -o links.filter.tsv
+	egaz prepseq ../../preref/${PREFIX}.fa -o .
+	perl -nla -F"\t" -e "print for @F" <links.filter.tsv | spanr cover stdin -o cover.yml
+	echo "key,count" >links.count.csv
+	for n in 2 3 4-50; do
+		linkr filter links.filter.tsv -n ${n} -o links.copy${n}.tsv
+		perl -nla -F"\t" -e "print for @F" <links.copy${n}.tsv | spanr cover stdin -o copy${n}.temp.yml
+		wc -l links.copy${n}.tsv \
+			| perl -nl -e "
+            @fields = grep {/\S+/} split /\s+/;
+            next unless @fields == 2;
+            next unless \$fields[1] =~ /links\.([\w-]+)\.tsv/;
+            printf qq{%s,%s\n}, \$1, \$fields[0];
+        " \
+				>>links.count.csv
+		rm links.copy${n}.tsv
 	done
-done
-
-parallel -j 20 "
-	perl ../promotor_intsec.pl \
-		../struct/protein_coding.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pc.prom.bed
-	perl ../arg_meth_link_neo.pl \
-		../../MASED/Memory/AT.beta.1.tsv \
-		{1}_{2}/time-point.{3}.pc.prom.bed \
-		{1}_{2}/time-point.{3}.pc.prom.beta.bed 6
-" ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
-
-rm time-point.pc.prom.beta.all.bed 2>/dev/null
-for i in lastz biser; do
-	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
-		rm ${i}_${j}/time-point.pc.prom.beta.bed 2>/dev/null
-		for k in {1..6}; do
-			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
-				${i}_${j}/time-point.${k}.pc.prom.beta.bed \
-				>>${i}_${j}/time-point.pc.prom.beta.bed
-			awk -va=${i} -vb=${j} -vc="${k}" '{print b "\t" a "\t" $1 "\t" $2 "\t" $3 "\t" c "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
-				${i}_${j}/time-point.${k}.pc.prom.beta.bed \
-				>>time-point.pc.prom.beta.all.bed
-		done
-	done
+	spanr merge copy2.temp.yml copy3.temp.yml copy4-50.temp.yml -o copy.yml
+	spanr stat chr.sizes copy.yml --all -o links.copy.csv
+	fasops mergecsv links.copy.csv links.count.csv --concat -o copy.csv
+	spanr stat chr.sizes cover.yml -o cover.yml.csv
+	mv cover.yml Atha.cover.yml
+	mv copy.yml Atha.copy.yml
+	mv cover.yml.csv Atha.cover.csv
+	mv copy.csv Atha.copy.csv
+	mv links.filter.tsv Atha.links.tsv
+	rm -rf Chr*.fa chr* ./*.temp.yml ./*.links.merge.tsv ./*.links.sort.clean.tsv
+	cd ..
 done
