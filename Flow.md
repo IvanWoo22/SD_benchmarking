@@ -37,11 +37,13 @@ parallel -j 2 '
 		RepeatMasker -spec arabidopsis -pa 12 -s -xsmall -e ncbi -dir . Chr${j}.fa
 		RM2Bed.py -d . Chr${j}.fa.out
 		trf Chr${j}.fa 2 7 7 80 10 50 15 -l 25 -h -ngs >Chr${j}.fa.dat
+		dustmasker -in Chr${j}.fa -outfmt acclist -out - | sed '\''s/^>//'\'' >Chr${j}.fa_dust.bed
 	done
 	cat Chr*.fa_rm.bed | bedtools sort -i - >repeatmasker.out.bed
+	cat Chr*.fa_dust.bed | bedtools sort -i - >dust.out.bed
 	python ../../trf_merge.py Chr{1..5}.fa.dat trf.bed
 
-	cat trf.bed repeatmasker.out.bed \
+	cat trf.bed dust.out.bed repeatmasker.out.bed \
 		| cut -f 1-3 >>tmp.msk.bed
 	cut -f 1-3 tmp.msk.bed \
 		| bedtools sort -i - \
@@ -52,7 +54,7 @@ parallel -j 2 '
 		| bedtools sort -i - \
 		| bedtools merge -i - \
 		| seqtk seq -l 50 -M /dev/stdin ../{}_unmasked.fa >../{}_rmmasked.fa
-	rm Chr* repeatmasker.out.bed trf.bed tmp.msk.bed tmp2.msk.bed
+	rm Chr* repeatmasker.out.bed trf.bed tmp.msk.bed tmp2.msk.bed dust.out.bed
 ' ::: TAIR10 ColCEN
 rm -r *_rm
 ```
@@ -84,13 +86,16 @@ egaz prepseq ../ColCEN_unmasked.fa -o .
 cd .. && rm -rf "smcover"
 cd ..
 ```
-|                  | chr length | masked size | masked coverage |
-|:-----------------|-----------:|------------:|----------------:|
-| TAIR10_unmasked  |  119146348 |      186207 |          0.0016 |
-| TAIR10_rmmasked  |  119146348 |    21324693 |          0.1790 |
-| TAIR10_E58masked |  119146348 |    38123558 |          0.3200 |
-| ColCEN_unmasked  |  131559676 |           0 |          0.0000 |
-| ColCEN_rmmasked  |  131559676 |    33290733 |          0.2530 |
+
+|                      | chr length | masked size | masked coverage |
+|:---------------------|-----------:|------------:|----------------:|
+| TAIR10_unmasked      |  119146348 |      186207 |          0.0016 |
+| TAIR10_rmmasked      |  119146348 |    21324693 |          0.1790 |
+| TAIR10_rmmasked+dust |  119146348 |    24643592 |          0.2068 |
+| TAIR10_E58masked     |  119146348 |    38123558 |          0.3200 |
+| ColCEN_unmasked      |  131559676 |           0 |          0.0000 |
+| ColCEN_rmmasked      |  131559676 |    33290733 |          0.2530 |
+| ColCEN_rmmasked+dust |  131559676 |    36621527 |          0.2784 |
 
 ### `biser` for SD.
 
@@ -131,43 +136,37 @@ parallel -j 6 '
 	spanr stat chr.sizes cover.yml -o cover.yml.csv
 	rm -rf Chr*.fa chr* ./*.temp.yml ./links.merge.tsv ./links.sort.clean.tsv
 ' ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked
+cd ..
 ```
 
+### `lastz` for SD.
 
 ```shell
 mkdir "lastz" && cd "lastz" || exit
 echo 'strain,strain_id,species,species_id,genus,genus_id,family,family_id,order,order_id
 Atha,3702,"Arabidopsis thaliana",3702,Arabidopsis,3701,Brassicaceae,3700,Brassicales,3699' >ensembl_taxon.csv
-for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked; do
-	mkdir ${PREFIX}
-	egaz prepseq ../preref/${PREFIX}.fa -o ${PREFIX}/
-	egaz template ${PREFIX}/ --self -o ${PREFIX}/ --taxon ./ensembl_taxon.csv --circos --parallel 16 -v
-	cd ${PREFIX} || exit
+parallel -j 6 '
+	mkdir {}
+	egaz prepseq ../preref/{}.fa -o {}/
+	egaz template {}/ --self -o {}/ --taxon ./ensembl_taxon.csv --circos --parallel 16 -v
+	cd {} || exit
 	mkdir -p Pairwise
 	egaz lastz \
 		--isself --set set01 -C 0 \
-		--parallel 16 --verbose \
+		--parallel 4 --verbose \
 		. . \
-		-o Pairwise/AthavsSelf
+		-o Pairwise/vsSelf
 	egaz lpcnam \
-		--parallel 16 --verbose \
+		--parallel 4 --verbose \
 		. . \
-		Pairwise/AthavsSelf
-	cd ..
-done
-```
-
-```shell
-for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked; do
-	cd ${PREFIX} || exit
-	mkdir -p Results/Atha
-	mkdir -p Processing/Atha
-	ln -s "$(pwd)"/chr.fasta Processing/Atha/genome.fa
-	cp -f "$(pwd)"/chr.sizes Processing/Atha/chr.sizes
-
-	cd Processing/Atha || exit
+		Pairwise/vsSelf
+	mkdir -p Results/vsSelf
+	mkdir -p Processing/vsSelf
+	ln -s "$(pwd)"/chr.fasta Processing/vsSelf/genome.fa
+	cp -f "$(pwd)"/chr.sizes Processing/vsSelf/chr.sizes
+	cd Processing/vsSelf || exit
 	fasops axt2fas \
-		../../Pairwise/AthavsSelf/axtNet/*.axt.gz \
+		../../Pairwise/vsSelf/axtNet/*.axt.gz \
 		-l 1000 -s chr.sizes -o stdout >axt.fas
 	fasops separate axt.fas -o . --nodash -s .sep.fasta
 	egaz exactmatch target.sep.fasta genome.fa --length 500 --discard 50 -o replace.target.tsv
@@ -184,14 +183,6 @@ for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked; 
 		| faops filter -u stdin stdout \
 		| faops filter -n 250 stdin stdout \
 			>axt.gl.fasta
-	cd ../../..
-done
-
-```
-
-```shell
-for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked; do
-	cd ${PREFIX}/Processing/Atha || exit
 	egaz blastn axt.gl.fasta genome.fa -o axt.bg.blast --parallel 8
 	egaz blastmatch axt.bg.blast -c 0.95 -o axt.bg.region --parallel 8
 	samtools faidx genome.fa -r axt.bg.region --continue \
@@ -200,23 +191,18 @@ for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked; 
 		| faops filter -n 250 stdin stdout >axt.all.fasta
 	egaz blastn axt.all.fasta axt.all.fasta -o axt.all.blast --parallel 8
 	egaz blastlink axt.all.blast -c 0.95 -o links.blast.tsv --parallel 8
-
 	linkr sort links.lastz.tsv links.blast.tsv -o links.sort.tsv
 	linkr clean links.sort.tsv -o links.sort.clean.tsv
-
 	rgr merge links.sort.clean.tsv -c 0.95 -o links.merge.tsv
 	linkr clean links.sort.clean.tsv -r links.merge.tsv --bundle 500 -o links.clean.tsv
-
 	linkr connect links.clean.tsv -r 0.9 -o links.connect.tsv
 	linkr filter links.connect.tsv -r 0.8 -o links.filter.tsv
-
 	fasops create links.filter.tsv -g genome.fa -o multi.temp.fas
 	fasops refine multi.temp.fas --msa mafft -p 16 --chop 10 -o multi.refine.fas
 	fasops links multi.refine.fas -o stdout | linkr sort stdin -o stdout | linkr filter stdin -n 2-50 -o links.refine.tsv
 	fasops links multi.refine.fas -o stdout --best | linkr sort stdin -o links.best.tsv
 	fasops create links.best.tsv -g genome.fa --name Atha -o pair.temp.fas
 	fasops refine pair.temp.fas --msa mafft -p 16 -o pair.refine.fas
-
 	perl -nla -F"\t" -e "print for @F" <links.refine.tsv | spanr cover stdin -o cover.yml
 	echo "key,count" >links.count.csv
 	for n in 2 3 4-50; do
@@ -236,41 +222,43 @@ for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked; 
 	spanr stat chr.sizes copy.yml --all -o links.copy.csv
 	fasops mergecsv links.copy.csv links.count.csv --concat -o copy.csv
 	spanr stat chr.sizes cover.yml -o cover.yml.csv
-	cp cover.yml ../../Atha.cover.yml
-	cp copy.yml ../../Atha.copy.yml
-	mv cover.yml.csv ../../Atha.cover.csv
-	mv copy.csv ../../Atha.copy.csv
-	cp links.refine.tsv ../../Atha.links.tsv
-	mv multi.refine.fas ../../Atha.multi.fas
-	mv pair.refine.fas ../../Atha.pair.fas
+	cp cover.yml ../../cover.yml
+	cp copy.yml ../../copy.yml
+	mv cover.yml.csv ../../cover.csv
+	mv copy.csv ../../copy.csv
+	cp links.refine.tsv ../../links.tsv
+	mv multi.refine.fas ../../multi.fas
+	mv pair.refine.fas ../../pair.fas
 	cd ../..
 	rm -rf Processing Pairwise Results Chr*.fa chr* *.sh
-	cd ..
-done
+' ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked
+cd ..
 ```
 
+### Detect functional structure of genes.
+
 ```shell
-mkdir struct
+mkdir structure
 perl struct_split.pl \
-	Araport11_gene_type.txt \
-	../MASED/BestLatestAtha/Araport11.format4.gff \
-	struct
+	data/Araport11_gene_type.txt \
+	data/Araport11_cleanformat.gff \
+	structure
 
 for i in promoter genebody gene; do
-	sort -k1,1 -k2,2n struct/${i}.raw.bed >struct/${i}.bed
+	sort -k1,1 -k2,2n structure/${i}.raw.bed >structure/${i}.bed
 	for j in pseudogene noncoding_rna novel_transcribed_region protein_coding; do
-		grep ${j} struct/${i}.bed >struct/${j}.${i}.bed
+		grep ${j} structure/${i}.bed >structure/${j}.${i}.bed
 	done
 done
 
-awk '$1~/^[0-9]+$/{print $1 "\t" $2 "\t" $2 "\t" $7 "\t" $5 "\t" $3}' \
-	~/fat/NJU_seq/mrna.scored.Nm.{Pst,MgCl2}.tsv \
-	| sort -k1,1 -k2,2n \
-	| uniq >Atha.mrna.Nm.bed
-cut -f 4 Atha.mrna.Nm.bed \
+#awk '$1~/^[0-9]+$/{print $1 "\t" $2 "\t" $2 "\t" $7 "\t" $5 "\t" $3}' \
+#	~/fat/NJU_seq/mrna.scored.Nm.{Pst,MgCl2}.tsv \
+#	| sort -k1,1 -k2,2n \
+#	| uniq >data/Atha.mrna.Nm.bed
+cut -f 4 data/Atha.mrna.Nm.bed \
 	| awk -F "/" '{print $1}' \
-	| sort | uniq >Atha.mrna.Nm.gene.list
-grep -f Atha.mrna.Nm.gene.list struct/gene.bed >struct/withNm.gene.bed
+	| sort | uniq >data/Atha.mrna.Nm.genelist.tsv
+grep -f Atha.mrna.Nm.gene.list structure/gene.bed >structure/withNm.gene.bed
 
 rm struct/*.raw.bed
 ```
