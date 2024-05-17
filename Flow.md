@@ -34,16 +34,16 @@ parallel -j 2 '
 	mkdir {}_rm && cd {}_rm || exit
 	faops split-name ../{}_unmasked.fa .
 	for j in 1 2 3 4 5; do
-		RepeatMasker -spec arabidopsis -pa 12 -s -xsmall -e ncbi -dir . Chr${j}.fa
+		RepeatMasker -species arabidopsis -pa 12 -s -xsmall -e ncbi -dir . Chr${j}.fa
 		RM2Bed.py -d . Chr${j}.fa.out
 		trf Chr${j}.fa 2 7 7 80 10 50 15 -l 25 -h -ngs >Chr${j}.fa.dat
 		dustmasker -in Chr${j}.fa -outfmt acclist -out - | sed '\''s/^>//'\'' >Chr${j}.fa_dust.bed
 	done
 	cat Chr*.fa_rm.bed | bedtools sort -i - >repeatmasker.out.bed
 	cat Chr*.fa_dust.bed | bedtools sort -i - >dust.out.bed
-	python ../../trf_merge.py Chr{1..5}.fa.dat trf.bed
+	python ../../trf_merge.py Chr{1..5}.fa.dat trf.out.bed
 
-	cat trf.bed dust.out.bed repeatmasker.out.bed \
+	cat trf.out.bed dust.out.bed repeatmasker.out.bed \
 		| cut -f 1-3 >>tmp.msk.bed
 	cut -f 1-3 tmp.msk.bed \
 		| bedtools sort -i - \
@@ -54,7 +54,6 @@ parallel -j 2 '
 		| bedtools sort -i - \
 		| bedtools merge -i - \
 		| seqtk seq -l 50 -M /dev/stdin ../{}_unmasked.fa >../{}_rmmasked.fa
-	rm Chr* repeatmasker.out.bed trf.bed tmp.msk.bed tmp2.msk.bed dust.out.bed
 ' ::: TAIR10 ColCEN
 rm -r *_rm
 ```
@@ -86,6 +85,8 @@ egaz prepseq ../ColCEN_unmasked.fa -o .
 cd .. && rm -rf "smcover"
 cd ..
 ```
+
+`cat preref/masked_cover.csv`
 
 |                      | chr length | masked size | masked coverage |
 |:---------------------|-----------:|------------:|----------------:|

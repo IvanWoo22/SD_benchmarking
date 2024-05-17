@@ -29,7 +29,7 @@ def main(input_dats, output_bed):
     trf_df = pd.DataFrame(trf, columns=header)
     trf_df["start"] = trf_df["start"].astype(int)
     trf_df.sort_values(by=["#chr", "start"], inplace=True)
-    trf_df.to_csv(output_bed, sep="\t", index=False)
+    trf_df.to_csv(output_bed, sep="\t", index=False, header=False)
 
 
 if __name__ == "__main__":
