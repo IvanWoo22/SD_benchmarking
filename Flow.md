@@ -232,7 +232,7 @@ parallel -j 6 '
 	mv pair.refine.fas ../../pair.fas
 	cd ../..
 	rm -rf Processing Pairwise Results Chr*.fa chr* *.sh
-' ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked
+' ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked
 cd ..
 ```
 
@@ -260,7 +260,6 @@ cut -f 4 data/Atha.mrna.Nm.bed \
 	| awk -F "/" '{print $1}' \
 	| sort | uniq >data/Atha.mrna.Nm.genelist.tsv
 grep -f Atha.mrna.Nm.gene.list structure/gene.bed >structure/withNm.gene.bed
-
 rm struct/*.raw.bed
 ```
 
@@ -490,10 +489,10 @@ for i in lastz biser; do
 		rm ${i}_${j}/time-point.prom.beta.bed 2>/dev/null
 		for k in {1..6}; do
 			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
-				${i}_${j}/time-point.${k}.prom.beta.bed \
+				${i}_${j}/time-point."${k}".prom.beta.bed \
 				>>${i}_${j}/time-point.prom.beta.bed
 			awk -va=${i} -vb=${j} -vc="${k}" '{print b "\t" a "\t" $1 "\t" $2 "\t" $3 "\t" c "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
-				${i}_${j}/time-point.${k}.prom.beta.bed \
+				${i}_${j}/time-point."${k}".prom.beta.bed \
 				>>time-point.prom.beta.all.bed
 		done
 	done
@@ -516,10 +515,10 @@ for i in lastz biser; do
 		rm ${i}_${j}/time-point.pseudo.prom.beta.bed 2>/dev/null
 		for k in {1..6}; do
 			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
-				${i}_${j}/time-point.${k}.pseudo.prom.beta.bed \
+				${i}_${j}/time-point."${k}".pseudo.prom.beta.bed \
 				>>${i}_${j}/time-point.pseudo.prom.beta.bed
 			awk -va=${i} -vb=${j} -vc="${k}" '{print b "\t" a "\t" $1 "\t" $2 "\t" $3 "\t" c "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
-				${i}_${j}/time-point.${k}.pseudo.prom.beta.bed \
+				${i}_${j}/time-point."${k}".pseudo.prom.beta.bed \
 				>>time-point.pseudo.prom.beta.all.bed
 		done
 	done

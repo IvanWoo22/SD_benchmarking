@@ -84,7 +84,7 @@ parallel -j 6 '
 	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops mergecsv links.copy.csv links.count.csv --concat -o copy.csv
 	spanr stat chr.sizes cover.yml -o cover.yml.csv
 	rm -rf Chr*.fa chr* ./*.temp.yml ./links.merge.tsv ./links.sort.clean.tsv
-' ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked
+' ::: TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked
 cd ..
 
 mkdir "lastz" && cd "lastz" || exit
@@ -159,5 +159,294 @@ parallel -j 6 '
 	mv pair.refine.fas ../../pair.fas
 	cd ../..
 	rm -rf Processing Pairwise Results Chr*.fa chr* *.sh
-' ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked
+' ::: TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked
 cd ..
+
+mkdir "sd_meth" && cd "sd_meth" || exit
+for i in Alyrata Ahalleri Bstricta Rislandica BrapaFPsc Esyriacum Dstrictus Cpapaya Cviolacea Tcacao Graimondii; do
+	ln -s "$PWD"/../phyt/Atha_${i}.yml Atha_${i}.yml
+done
+parallel -j 6 '
+	mkdir {1}_{2}
+	linkr filter ../{1}/{2}/links.tsv -n 2 -o {1}_{2}/links.2copy.tmp
+	perl ../split_lines.pl {1}_{2}/links.2copy.tmp {1}_{2}/links.2copy.tsv
+	rm {1}_{2}/links.2copy.tmp
+	perl ../classify_links.pl {1}_{2}/links.2copy.tsv Atha_{Alyrata,Ahalleri,Bstricta,Rislandica,BrapaFPsc,Esyriacum,Dstrictus,Cpapaya,Cviolacea,Tcacao,Graimondii}.yml 0.5 >{1}_{2}/time-point.raw.tsv
+	cut -f 1,2 {1}_{2}/time-point.raw.tsv >{1}_{2}/time-point.0.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 3,4 >{1}_{2}/time-point.1.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 5,6 >{1}_{2}/time-point.2.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 7,8,9 >{1}_{2}/time-point.3.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 10,11 >{1}_{2}/time-point.4.tmp
+	python ../tsv_summarize.py {1}_{2}/time-point.raw.tsv 12,13 >{1}_{2}/time-point.5.tmp
+	paste {1}_{2}/time-point.{0..5}.tmp >{1}_{2}/time-point.tsv
+	rm {1}_{2}/time-point.{0..5}.tmp {1}_{2}/time-point.raw.tsv
+' ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked
+
+for i in lastz biser; do
+	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
+		cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
+			| awk -va=1 '{
+				count0 = 0;
+				count1 = 0;
+				count2 = 0;
+				count3 = 0;
+				for (i = (a+1); i <= NF; i++) {
+					if ($i == 0) {
+							count0++;
+					} else if ($i == 1) {
+							count1++;
+					} else if ($i == 2) {
+							count2++;
+					} else if ($i == 3) {
+							count3++;
+					}
+				}
+				if (count0 >= 0 && count1 == 0 && count2 == 0 && count3 == 0) {
+					print;
+				}
+			}' | awk '{print $2 $3 $4 $5 $6 "\t" 0 "\t" $1}' >time1-0.tmp
+		cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
+			| awk -va=1 '{
+				count0 = 0;
+				count1 = 0;
+				count2 = 0;
+				count3 = 0;
+				for (i = (a+1); i <= NF; i++) {
+					if ($i == 0) {
+							count0++;
+					} else if ($i == 1) {
+							count1++;
+					} else if ($i == 2) {
+							count2++;
+					} else if ($i == 3) {
+							count3++;
+					}
+				}
+				if (count0 >= 0 && count1 > 0 && count2 == 0 && count3 == 0) {
+					print;
+				}
+			}' | awk '{print $2 $3 $4 $5 $6 "\t" 1 "\t" $1}' >time1-1.tmp
+		cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
+			| awk -va=1 '{
+				count0 = 0;
+				count1 = 0;
+				count2 = 0;
+				count3 = 0;
+				for (i = (a+1); i <= NF; i++) {
+					if ($i == 0) {
+							count0++;
+					} else if ($i == 1) {
+							count1++;
+					} else if ($i == 2) {
+							count2++;
+					} else if ($i == 3) {
+							count3++;
+					}
+				}
+				if (count0 >= 0 && count1 == 0 && count2 > 0 && count3 == 0) {
+					print;
+				}
+			}' | awk '{print $2 $3 $4 $5 $6 "\t" 2 "\t" $1}' >time1-2.tmp
+		cat time1-{0,1,2}.tmp >${i}_${j}/time1.txt
+		for k in {2..5}; do
+			cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
+				| awk -va="$k" '{
+					count0 = 0;
+					count1 = 0;
+					count2 = 0;
+					count3 = 0;
+					for (k = (a+1); k <= NF; k++) {
+						if ($k == 0) {
+								count0++;
+						} else if ($k == 1) {
+								count1++;
+						} else if ($k == 2) {
+								count2++;
+						} else if ($k == 3) {
+								count3++;
+						}
+					}
+					if (count0 >= 0 && count1 == 0 && count2 == 0 && count3 == 0) {
+						print;
+					}
+				}' | awk -va="$k" '$a==3{print $2 $3 $4 $5 $6 "\t" 0 "\t" $1}' >time"${k}"-0.tmp
+			cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
+				| awk -va="$k" '{
+					count0 = 0;
+					count1 = 0;
+					count2 = 0;
+					count3 = 0;
+					for (k = (a+1); k <= NF; k++) {
+						if ($k == 0) {
+								count0++;
+						} else if ($k == 1) {
+								count1++;
+						} else if ($k == 2) {
+								count2++;
+						} else if ($k == 3) {
+								count3++;
+						}
+					}
+					if (count0 >= 0 && count1 > 0 && count2 == 0 && count3 == 0) {
+						print;
+					}
+				}' | awk -va="$k" '$a==3{print $2 $3 $4 $5 $6 "\t" 1 "\t" $1}' >time"${k}"-1.tmp
+			cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
+				| awk -va="$k" '{
+					count0 = 0;
+					count1 = 0;
+					count2 = 0;
+					count3 = 0;
+					for (k = (a+1); k <= NF; k++) {
+						if ($k == 0) {
+								count0++;
+						} else if ($k == 1) {
+								count1++;
+						} else if ($k == 2) {
+								count2++;
+						} else if ($k == 3) {
+								count3++;
+						}
+					}
+					if (count0 >= 0 && count1 == 0 && count2 > 0 && count3 == 0) {
+						print;
+					}
+				}' | awk -va="$k" '$a==3{print $2 $3 $4 $5 $6 "\t" 2 "\t" $1}' >time"${k}"-2.tmp
+			cat time"${k}"-{0,1,2}.tmp >${i}_${j}/time"${k}".txt
+		done
+		cut -f 3,4,5,6,7 ${i}_${j}/time-point.tsv | sort | uniq -c \
+			| awk '$NF==3{print $2 $3 $4 $5 $6 $7 "\t" 0 "\t" $1}' >${i}_${j}/time6.txt
+		rm time*.tmp
+		awk -va=${i} -vb=${j} '{print b "\t" a "\t" ($3-$2) "\n" b "\t" a "\t" ($6-$5)}' \
+			${i}_${j}/links.2copy.tsv >>links2_length_distribution.tsv
+		for k in {1..6}; do
+			awk -va=${i} -vb=${j} -vc="${k}" '{sum+=$3};END{print b "\t" a "\t" c "\t" sum}' ${i}_${j}/time"${k}".txt >>links2_timedistribution.tsv
+		done
+		awk -F"\t" -va=${i} -vb=${j} '$1==b&&$2==a{sum+=$4};END{print b "\t" a "\t" sum}' links2_timedistribution.tsv >>links2_timedistributionallcount.tsv
+		wc -l <${i}_${j}/links.2copy.tsv >>links2_allcount.tsv
+	done
+done
+paste links2_timedistributionallcount.tsv links2_allcount.tsv >links2_counts_in_timeline.tsv
+rm links2_timedistributionallcount.tsv links2_allcount.tsv
+
+parallel -j 24 "
+	perl ../fetch_time_point.pl {1}_{2}/time{3}.txt {1}_{2}/time-point.tsv \\
+		>{1}_{2}/time-point.{3}.tsv
+	awk '\$7==1{print \$1 \"\\t\" \$2 \"\\t\" \$3 \"\\t\" NR \"\\t1\\n\" \$4 \"\\t\" \$5 \"\\t\" \$6 \"\\t\" NR \"\\t2\"};
+		\$7==0{print \$1 \"\\t\" \$2 \"\\t\" \$3 \"\\t\" NR \"\\t0\\n\" \$4 \"\\t\" \$5 \"\\t\" \$6 \"\\t\" NR \"\\t0\"}' \\
+		{1}_{2}/time-point.{3}.tsv \\
+		| sort -k1,1 -k2,2n >{1}_{2}/time-point.{3}.sort.bed
+	awk '{print \$1 \"\\t\" \$2 \"\\t\" \$3 \"\\t\" NR \"\\t\" \$8 \"\\n\" \$4 \"\\t\" \$5 \"\\t\" \$6 \"\\t\" NR \"\\t\" \$8}' \\
+		{1}_{2}/time-point.{3}.tsv \\
+		| sort -k1,1 -k2,2n >{1}_{2}/time-point.{3}.evolution.bed
+" ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
+
+parallel -j 24 "
+	perl ../arg_meth_link.pl \\
+		../../MASED/Memory/AT.beta.1.tsv \\
+		{1}_{2}/time-point.{3}.sort.bed \\
+		{1}_{2}/time-point.{3}.beta.bed
+" ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
+
+rm time-point.beta.all.bed 2>/dev/null
+for i in lastz biser; do
+	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
+		rm ${i}_${j}/time-point.beta.bed 2>/dev/null
+		for k in {1..6}; do
+			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $6 "\t" $7}' \
+				${i}_${j}/time-point."${k}".beta.bed >>${i}_${j}/time-point.beta.bed
+			awk -va=${i} -vb=${j} -vc="${k}" '{print b "\t" a "\t" $1 "\t" $2 "\t" $3 "\t" c "\t" $4 "\t" $5 "\t" $6 "\t" $7}' \
+				${i}_${j}/time-point."${k}".beta.bed >>time-point.beta.all.bed
+		done
+	done
+done
+
+parallel -j 20 "
+	perl ../promotor_intsec.pl \
+		../structure/promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.prom.bed
+	perl ../arg_meth_link_neo.pl \
+		../../MASED/Memory/AT.beta.1.tsv \
+		{1}_{2}/time-point.{3}.prom.bed \
+		{1}_{2}/time-point.{3}.prom.beta.bed 6
+" ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
+
+rm time-point.prom.beta.all.bed 2>/dev/null
+for i in lastz biser; do
+	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
+		rm ${i}_${j}/time-point.prom.beta.bed 2>/dev/null
+		for k in {1..6}; do
+			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
+				${i}_${j}/time-point."${k}".prom.beta.bed \
+				>>${i}_${j}/time-point.prom.beta.bed
+			awk -va=${i} -vb=${j} -vc="${k}" '{print b "\t" a "\t" $1 "\t" $2 "\t" $3 "\t" c "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
+				${i}_${j}/time-point."${k}".prom.beta.bed \
+				>>time-point.prom.beta.all.bed
+		done
+	done
+done
+
+parallel -j 20 "
+	perl ../promotor_intsec.pl \
+		../struct/pseudogene.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pseudo.prom.bed
+	perl ../arg_meth_link_neo.pl \
+		../../MASED/Memory/AT.beta.1.tsv \
+		{1}_{2}/time-point.{3}.pseudo.prom.bed \
+		{1}_{2}/time-point.{3}.pseudo.prom.beta.bed 6
+" ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
+
+rm time-point.pseudo.prom.beta.all.bed 2>/dev/null
+for i in lastz biser; do
+	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
+		rm ${i}_${j}/time-point.pseudo.prom.beta.bed 2>/dev/null
+		for k in {1..6}; do
+			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
+				${i}_${j}/time-point."${k}".pseudo.prom.beta.bed \
+				>>${i}_${j}/time-point.pseudo.prom.beta.bed
+			awk -va=${i} -vb=${j} -vc="${k}" '{print b "\t" a "\t" $1 "\t" $2 "\t" $3 "\t" c "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
+				${i}_${j}/time-point."${k}".pseudo.prom.beta.bed \
+				>>time-point.pseudo.prom.beta.all.bed
+		done
+	done
+done
+
+parallel -j 20 "
+	perl ../promotor_intsec.pl \
+		../struct/protein_coding.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pc.prom.bed
+	perl ../arg_meth_link_neo.pl \
+		../../MASED/Memory/AT.beta.1.tsv \
+		{1}_{2}/time-point.{3}.pc.prom.bed \
+		{1}_{2}/time-point.{3}.pc.prom.beta.bed 6
+" ::: lastz biser ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ::: {1..6}
+
+rm time-point.pc.prom.beta.all.bed 2>/dev/null
+for i in lastz biser; do
+	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
+		rm ${i}_${j}/time-point.pc.prom.beta.bed 2>/dev/null
+		for k in {1..6}; do
+			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
+				${i}_${j}/time-point."${k}".pc.prom.beta.bed \
+				>>${i}_${j}/time-point.pc.prom.beta.bed
+			awk -va=${i} -vb=${j} -vc="${k}" '{print b "\t" a "\t" $1 "\t" $2 "\t" $3 "\t" c "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
+				${i}_${j}/time-point."${k}".pc.prom.beta.bed \
+				>>time-point.pc.prom.beta.all.bed
+		done
+	done
+done
+
+rm links2_cover_in_timeline.tsv 2>/dev/null
+for i in lastz biser; do
+	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
+		for k in {1..6}; do
+			awk '{print $1 ":" $2 "-" $3}' ${i}_${j}/time-point."${k}".sort.bed \
+				| spanr cover stdin -o temp.yml
+			echo -ne "${j}\t${i}\t${k}\t" >>links2_cover_in_timeline.tsv
+			spanr stat ../../MASED/revis/RMasked/Ensembl/Atha/chr.sizes \
+				--all temp.yml | awk -F "," 'NR==2{printf $2 "\t"}' >>links2_cover_in_timeline.tsv
+			rm temp.yml
+			closestBed -d -a ${i}_${j}/time-point."${k}".sort.bed \
+				-b ../Atha.mrna.Nm.bed -t all \
+				| awk '$NF==0' | cut -f 6-8 \
+				| sort | uniq | wc -l >>links2_cover_in_timeline.tsv
+		done
+	done
+done
