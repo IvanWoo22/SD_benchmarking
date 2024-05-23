@@ -30,15 +30,15 @@ rm TAIR10_chr_all.fas.gz Arabidopsis_thaliana.TAIR10.dna_sm.toplevel.fa.gz Col-C
 ### Mask the reference sequences.
 
 ```shell
-parallel -j 2 '
-	mkdir {}_rm && cd {}_rm || exit
-	faops split-name ../{}_unmasked.fa .
-	for j in 1 2 3 4 5; do
-		RepeatMasker -species arabidopsis -pa 12 -s -xsmall -e ncbi -dir . Chr${j}.fa
-		RM2Bed.py -d . Chr${j}.fa.out
-		trf Chr${j}.fa 2 7 7 80 10 50 15 -l 25 -h -ngs >Chr${j}.fa.dat
-		dustmasker -in Chr${j}.fa -outfmt acclist -out - | sed '\''s/^>//'\'' >Chr${j}.fa_dust.bed
-	done
+for i in TAIR10 ColCEN; do
+	mkdir ${i}_rm && cd ${i}_rm || exit
+	faops split-name ../${i}_unmasked.fa .
+	parallel -j 5 '
+		RepeatMasker -species arabidopsis -pa 5 -s -xsmall -e ncbi -dir . Chr{}.fa
+		RM2Bed.py -d . Chr{}.fa.out
+		trf Chr{}.fa 2 5 7 80 10 40 500 -l 10 >Chr{}.fa.dat
+		dustmasker -in Chr{}.fa -outfmt acclist -out - | sed '\''s/^>//'\'' >Chr{}.fa_dust.bed
+	' ::: {1..5}
 	cat Chr*.fa_rm.bed | bedtools sort -i - >repeatmasker.out.bed
 	cat Chr*.fa_dust.bed | bedtools sort -i - >dust.out.bed
 	python ../../trf_merge.py Chr{1..5}.fa.dat trf.out.bed
@@ -48,13 +48,19 @@ parallel -j 2 '
 	cut -f 1-3 tmp.msk.bed \
 		| bedtools sort -i - \
 		| bedtools merge -i - \
-		| awk '\''$3-$2 > 2000 {print $0}'\'' \
-		| bedtools merge -d 100 -i - >tmp2.msk.bed
-	cut -f 1-3 tmp.msk.bed tmp2.msk.bed \
+		| awk '$3-$2 > 2000 {print $0}' \
+		| bedtools merge -d 100 -i - >tmp1.msk.bed
+	cut -f 1-3 tmp.msk.bed \
 		| bedtools sort -i - \
 		| bedtools merge -i - \
-		| seqtk seq -l 50 -M /dev/stdin ../{}_unmasked.fa >../{}_rmmasked.fa
-' ::: TAIR10 ColCEN
+		| awk '$3-$2 <= 2000 {print $0}' \
+		| bedtools merge -d 10 -i - >tmp2.msk.bed
+	cut -f 1-3 tmp.msk.bed tmp1.msk.bed tmp2.msk.bed \
+		| bedtools sort -i - \
+		| bedtools merge -i - \
+		| seqtk seq -l 50 -M /dev/stdin ../${i}_unmasked.fa >../${i}_rmmasked.fa
+	cd ..
+done
 rm -r *_rm
 ```
 
@@ -439,7 +445,7 @@ rm links2_timedistributionallcount.tsv links2_allcount.tsv
 
 ```shell
 parallel -j 24 "
-	perl ../fetch_timespot.pl {1}_{2}/time{3}.txt {1}_{2}/time-point.tsv \\
+	perl ../fetch_time_point.pl {1}_{2}/time{3}.txt {1}_{2}/time-point.tsv \\
 		>{1}_{2}/time-point.{3}.tsv
 	awk '\$7==1{print \$1 \"\\t\" \$2 \"\\t\" \$3 \"\\t\" NR \"\\t1\\n\" \$4 \"\\t\" \$5 \"\\t\" \$6 \"\\t\" NR \"\\t2\"};
 		\$7==0{print \$1 \"\\t\" \$2 \"\\t\" \$3 \"\\t\" NR \"\\t0\\n\" \$4 \"\\t\" \$5 \"\\t\" \$6 \"\\t\" NR \"\\t0\"}' \\
@@ -550,20 +556,20 @@ done
 ```
 
 ```shell
-rm links2_cover_in_timeline.tsv
+rm links2_Nm_cover_in_timeline.tsv
 for i in lastz biser; do
 	for j in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
 		for k in {1..6}; do
 			awk '{print $1 ":" $2 "-" $3}' ${i}_${j}/time-point."${k}".sort.bed \
 				| spanr cover stdin -o temp.yml
-			echo -ne "${j}\t${i}\t${k}\t" >>links2_cover_in_timeline.tsv
+			echo -ne "${j}\t${i}\t${k}\t" >>links2_Nm_cover_in_timeline.tsv
 			spanr stat ../../MASED/revis/RMasked/Ensembl/Atha/chr.sizes \
-				--all temp.yml | awk -F "," 'NR==2{printf $2 "\t"}' >>links2_cover_in_timeline.tsv
+				--all temp.yml | awk -F "," 'NR==2{printf $2 "\t"}' >>links2_Nm_cover_in_timeline.tsv
 			rm temp.yml
 			closestBed -d -a ${i}_${j}/time-point."${k}".sort.bed \
 				-b ../Atha.mrna.Nm.bed -t all \
 				| awk '$NF==0' | cut -f 6-8 \
-				| sort | uniq | wc -l >>links2_cover_in_timeline.tsv
+				| sort | uniq | wc -l >>links2_Nm_cover_in_timeline.tsv
 		done
 	done
 done

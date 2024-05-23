@@ -1,42 +1,31 @@
-mkdir "biser" && cd "biser" || exit
-for PREFIX in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked; do
-	mkdir ${PREFIX} && cd ${PREFIX} || exit
-	biser -t 20 -o biser_out ../../preref/${PREFIX}.fa
-	awk '{print $1"("$9"):"$2"-"$3"\t"$4"("$10"):"$5"-"$6}' biser_out \
-		| linkr sort stdin \
-		| linkr clean stdin -o links.sort.clean.tsv
-	rgr merge links.sort.clean.tsv -c 0.95 \
-		-o links.merge.tsv
-	linkr clean links.sort.clean.tsv \
-		-r links.merge.tsv --bundle 500 \
-		-o links.clean.tsv
-	linkr connect links.clean.tsv -r 0.05 \
-		| linkr filter stdin -r 0.05 -o links.filter.tsv
-	egaz prepseq ../../preref/${PREFIX}.fa -o .
-	perl -nla -F"\t" -e "print for @F" <links.filter.tsv | spanr cover stdin -o cover.yml
-	echo "key,count" >links.count.csv
-	for n in 2 3 4-50; do
-		linkr filter links.filter.tsv -n ${n} -o links.copy${n}.tsv
-		perl -nla -F"\t" -e "print for @F" <links.copy${n}.tsv | spanr cover stdin -o copy${n}.temp.yml
-		wc -l links.copy${n}.tsv \
-			| perl -nl -e "
-            @fields = grep {/\S+/} split /\s+/;
-            next unless @fields == 2;
-            next unless \$fields[1] =~ /links\.([\w-]+)\.tsv/;
-            printf qq{%s,%s\n}, \$1, \$fields[0];
-        " \
-				>>links.count.csv
-		rm links.copy${n}.tsv
-	done
-	spanr merge copy2.temp.yml copy3.temp.yml copy4-50.temp.yml -o copy.yml
-	spanr stat chr.sizes copy.yml --all -o links.copy.csv
-	fasops mergecsv links.copy.csv links.count.csv --concat -o copy.csv
-	spanr stat chr.sizes cover.yml -o cover.yml.csv
-	mv cover.yml Atha.cover.yml
-	mv copy.yml Atha.copy.yml
-	mv cover.yml.csv Atha.cover.csv
-	mv copy.csv Atha.copy.csv
-	mv links.filter.tsv Atha.links.tsv
-	rm -rf Chr*.fa chr* ./*.temp.yml ./*.links.merge.tsv ./*.links.sort.clean.tsv
+for i in TAIR10 ColCEN; do
+	mkdir ${i}_rm && cd ${i}_rm || exit
+	faops split-name ../${i}_unmasked.fa .
+	parallel -j 5 '
+		RepeatMasker -species arabidopsis -pa 5 -s -xsmall -e ncbi -dir . Chr{}.fa
+		RM2Bed.py -d . Chr{}.fa.out
+		trf Chr{}.fa 2 5 7 80 10 40 500 -l 10 >Chr{}.fa.dat
+		dustmasker -in Chr{}.fa -outfmt acclist -out - | sed '\''s/^>//'\'' >Chr{}.fa_dust.bed
+	' ::: {1..5}
+	cat Chr*.fa_rm.bed | bedtools sort -i - >repeatmasker.out.bed
+	cat Chr*.fa_dust.bed | bedtools sort -i - >dust.out.bed
+	python ../../trf_merge.py Chr{1..5}.fa.dat trf.out.bed
+
+	cat trf.out.bed dust.out.bed repeatmasker.out.bed \
+		| cut -f 1-3 >>tmp.msk.bed
+	cut -f 1-3 tmp.msk.bed \
+		| bedtools sort -i - \
+		| bedtools merge -i - \
+		| awk '$3-$2 > 2000 {print $0}' \
+		| bedtools merge -d 100 -i - >tmp1.msk.bed
+	cut -f 1-3 tmp.msk.bed \
+		| bedtools sort -i - \
+		| bedtools merge -i - \
+		| awk '$3-$2 <= 2000 {print $0}' \
+		| bedtools merge -d 10 -i - >tmp2.msk.bed
+	cut -f 1-3 tmp.msk.bed tmp1.msk.bed tmp2.msk.bed \
+		| bedtools sort -i - \
+		| bedtools merge -i - \
+		| seqtk seq -l 50 -M /dev/stdin ../${i}_unmasked.fa >../${i}_rmmasked.fa
 	cd ..
 done

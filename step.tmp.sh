@@ -16,23 +16,37 @@ cat Chr*.fa >ColCEN_unmasked.fa
 rm Chr*.fa
 rm TAIR10_chr_all.fas.gz Arabidopsis_thaliana.TAIR10.dna_sm.toplevel.fa.gz Col-CEN_v1.2.fasta.gz
 
-parallel -j 2 '
-	mkdir {}_rm && cd {}_rm || exit
-	faops split-name ../{}_unmasked.fa .
-	for j in 1 2 3 4 5; do
-		RepeatMasker -species arabidopsis -pa 12 -s -xsmall -e ncbi -dir . Chr${j}.fa
-		RM2Bed.py -d . Chr${j}.fa.out
-		trf Chr${j}.fa 2 7 7 80 10 50 15 -l 25 -h -ngs >Chr${j}.fa.dat
-		dustmasker -in Chr${j}.fa -outfmt acclist -out - | sed '\''s/^>//'\'' >Chr${j}.fa_dust.bed
-	done
+for i in TAIR10 ColCEN; do
+	mkdir ${i}_rm && cd ${i}_rm || exit
+	faops split-name ../${i}_unmasked.fa .
+	parallel -j 5 '
+		RepeatMasker -species arabidopsis -pa 5 -s -xsmall -e ncbi -dir . Chr{}.fa
+		RM2Bed.py -d . Chr{}.fa.out
+		trf Chr{}.fa 2 5 7 80 10 40 500 -l 10 >Chr{}.fa.dat
+		dustmasker -in Chr{}.fa -outfmt acclist -out - | sed '\''s/^>//'\'' >Chr{}.fa_dust.bed
+	' ::: {1..5}
 	cat Chr*.fa_rm.bed | bedtools sort -i - >repeatmasker.out.bed
 	cat Chr*.fa_dust.bed | bedtools sort -i - >dust.out.bed
 	python ../../trf_merge.py Chr{1..5}.fa.dat trf.out.bed
 
-	cat trf.out.bed dust.out.bed repeatmasker.out.bed | cut -f 1-3 >>tmp.msk.bed
-	cut -f 1-3 tmp.msk.bed | bedtools sort -i - | bedtools merge -i - | awk '\''$3-$2 > 2000 {print $0}'\'' | bedtools merge -d 100 -i - >tmp2.msk.bed
-	cut -f 1-3 tmp.msk.bed tmp2.msk.bed | bedtools sort -i - | bedtools merge -i - | seqtk seq -l 50 -M /dev/stdin ../{}_unmasked.fa >../{}_rmmasked.fa
-' ::: TAIR10 ColCEN
+	cat trf.out.bed dust.out.bed repeatmasker.out.bed \
+		| cut -f 1-3 >>tmp.msk.bed
+	cut -f 1-3 tmp.msk.bed \
+		| bedtools sort -i - \
+		| bedtools merge -i - \
+		| awk '$3-$2 > 2000 {print $0}' \
+		| bedtools merge -d 100 -i - >tmp1.msk.bed
+	cut -f 1-3 tmp.msk.bed \
+		| bedtools sort -i - \
+		| bedtools merge -i - \
+		| awk '$3-$2 <= 2000 {print $0}' \
+		| bedtools merge -d 10 -i - >tmp2.msk.bed
+	cut -f 1-3 tmp.msk.bed tmp1.msk.bed tmp2.msk.bed \
+		| bedtools sort -i - \
+		| bedtools merge -i - \
+		| seqtk seq -l 50 -M /dev/stdin ../${i}_unmasked.fa >../${i}_rmmasked.fa
+	cd ..
+done
 
 echo ",chr length,masked size,masked coverage" >masked_cover.csv
 mkdir "smcover" && cd "smcover" || exit
