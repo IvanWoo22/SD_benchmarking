@@ -30,13 +30,13 @@ rm TAIR10_chr_all.fas.gz Arabidopsis_thaliana.TAIR10.dna_sm.toplevel.fa.gz Col-C
 ### Mask the reference sequences.
 
 ```shell
-for i in TAIR10 ColCEN; do
+for i in TAIR10; do
 	mkdir ${i}_rm && cd ${i}_rm || exit
 	faops split-name ../${i}_unmasked.fa .
 	parallel -j 5 '
 		RepeatMasker -species arabidopsis -pa 5 -s -xsmall -e ncbi -dir . Chr{}.fa
 		RM2Bed.py -d . Chr{}.fa.out
-		trf Chr{}.fa 2 5 7 80 10 40 500 -l 10 >Chr{}.fa.dat
+		trf Chr{}.fa 2 5 7 80 10 40 500 -l 10 -h -ngs >Chr{}.fa.dat
 		dustmasker -in Chr{}.fa -outfmt acclist -out - | sed '\''s/^>//'\'' >Chr{}.fa_dust.bed
 	' ::: {1..5}
 	cat Chr*.fa_rm.bed | bedtools sort -i - >repeatmasker.out.bed
@@ -52,8 +52,6 @@ for i in TAIR10 ColCEN; do
 		| bedtools merge -d 100 -i - >tmp1.msk.bed
 	cut -f 1-3 tmp.msk.bed \
 		| bedtools sort -i - \
-		| bedtools merge -i - \
-		| awk '$3-$2 <= 2000 {print $0}' \
 		| bedtools merge -d 10 -i - >tmp2.msk.bed
 	cut -f 1-3 tmp.msk.bed tmp1.msk.bed tmp2.msk.bed \
 		| bedtools sort -i - \
@@ -61,6 +59,8 @@ for i in TAIR10 ColCEN; do
 		| seqtk seq -l 50 -M /dev/stdin ../${i}_unmasked.fa >../${i}_rmmasked.fa
 	cd ..
 done
+
+perl ../../gff2bed_TE.pl ../../data/Araport11.cleanformat.gff >TE.bed
 rm -r *_rm
 ```
 
@@ -71,7 +71,7 @@ echo ",chr length,masked size,masked coverage" >masked_cover.csv
 mkdir "smcover" && cd "smcover" || exit
 
 egaz prepseq ../TAIR10_unmasked.fa -o .
-for i in TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked; do
+for i in TAIR10_unmasked TAIR10_rmmasked TAIR10_rmmasked2 TAIR10_E58masked; do
 	{
 		echo -ne "${i},"
 		faops masked ../${i}.fa | spanr cover stdin \
@@ -98,11 +98,11 @@ cd ..
 |:---------------------|-----------:|------------:|----------------:|
 | TAIR10_unmasked      |  119146348 |      186207 |          0.0016 |
 | TAIR10_rmmasked      |  119146348 |    21324693 |          0.1790 |
-| TAIR10_rmmasked+dust |  119146348 |    24643592 |          0.2068 |
+| TAIR10_rmmasked+dust |  119146348 |    26025948 |          0.2184 |
 | TAIR10_E58masked     |  119146348 |    38123558 |          0.3200 |
 | ColCEN_unmasked      |  131559676 |           0 |          0.0000 |
 | ColCEN_rmmasked      |  131559676 |    33290733 |          0.2530 |
-| ColCEN_rmmasked+dust |  131559676 |    36621527 |          0.2784 |
+| ColCEN_rmmasked+dust |  131559676 |    38071449 |          0.2894 |
 
 ### `biser` for SD.
 
@@ -120,7 +120,8 @@ parallel -j 6 '
 		-r links.merge.tsv --bundle 500 \
 		-o links.clean.tsv
 	linkr connect links.clean.tsv -r 0.05 \
-		| linkr filter stdin -r 0.05 -o links.tsv
+		| linkr filter stdin -r 0.05 -o links.temp.tsv
+	perl ../../check_overlap.pl --input links.temp.tsv --exclude --overlap 0.1 >links.tsv
 	egaz prepseq ../../preref/{}.fa -o .
 	perl -nla -F"\t" -e "print for @F" <links.tsv | spanr cover stdin -o cover.yml
 	echo "key,count" >links.count.csv
@@ -162,18 +163,18 @@ parallel -j 6 '
 		--isself --set set01 -C 0 \
 		--parallel 4 --verbose \
 		. . \
-		-o Pairwise/vsSelf
+		-o Pairwise
 	egaz lpcnam \
 		--parallel 4 --verbose \
 		. . \
-		Pairwise/vsSelf
-	mkdir -p Results/vsSelf
-	mkdir -p Processing/vsSelf
-	ln -s "$(pwd)"/chr.fasta Processing/vsSelf/genome.fa
-	cp -f "$(pwd)"/chr.sizes Processing/vsSelf/chr.sizes
-	cd Processing/vsSelf || exit
+		Pairwise
+	mkdir -p Results
+	mkdir -p Processing
+	ln -s "$(pwd)"/chr.fasta Processing/genome.fa
+	cp -f "$(pwd)"/chr.sizes Processing/chr.sizes
+	cd Processing || exit
 	fasops axt2fas \
-		../../Pairwise/vsSelf/axtNet/*.axt.gz \
+		../Pairwise/axtNet/*.axt.gz \
 		-l 1000 -s chr.sizes -o stdout >axt.fas
 	fasops separate axt.fas -o . --nodash -s .sep.fasta
 	egaz exactmatch target.sep.fasta genome.fa --length 500 --discard 50 -o replace.target.tsv
@@ -200,10 +201,11 @@ parallel -j 6 '
 	egaz blastlink axt.all.blast -c 0.95 -o links.blast.tsv --parallel 8
 	linkr sort links.lastz.tsv links.blast.tsv -o links.sort.tsv
 	linkr clean links.sort.tsv -o links.sort.clean.tsv
-	rgr merge links.sort.clean.tsv -c 0.95 -o links.merge.tsv
+	rgr merge links.sort.clean.tsv -c 0.9 -o links.merge.tsv
 	linkr clean links.sort.clean.tsv -r links.merge.tsv --bundle 500 -o links.clean.tsv
-	linkr connect links.clean.tsv -r 0.9 -o links.connect.tsv
-	linkr filter links.connect.tsv -r 0.8 -o links.filter.tsv
+	linkr connect links.clean.tsv -r 0.8 -o links.connect.tsv
+	linkr filter links.connect.tsv -r 0.8 -o links.temp.tsv
+	perl ../../../check_overlap.pl --input links.temp.tsv --exclude --overlap 0.15 >links.filter.tsv
 	fasops create links.filter.tsv -g genome.fa -o multi.temp.fas
 	fasops refine multi.temp.fas --msa mafft -p 16 --chop 10 -o multi.refine.fas
 	fasops links multi.refine.fas -o stdout | linkr sort stdin -o stdout | linkr filter stdin -n 2-50 -o links.refine.tsv
@@ -229,15 +231,15 @@ parallel -j 6 '
 	spanr stat chr.sizes copy.yml --all -o links.copy.csv
 	fasops mergecsv links.copy.csv links.count.csv --concat -o copy.csv
 	spanr stat chr.sizes cover.yml -o cover.yml.csv
-	cp cover.yml ../../cover.yml
-	cp copy.yml ../../copy.yml
-	mv cover.yml.csv ../../cover.csv
-	mv copy.csv ../../copy.csv
-	cp links.refine.tsv ../../links.tsv
-	mv multi.refine.fas ../../multi.fas
-	mv pair.refine.fas ../../pair.fas
-	cd ../..
-	rm -rf Processing Pairwise Results Chr*.fa chr* *.sh
+	cp cover.yml ../cover.yml
+	cp copy.yml ../copy.yml
+	mv cover.yml.csv ../cover.csv
+	mv copy.csv ../copy.csv
+	cp links.refine.tsv ../links.tsv
+	mv multi.refine.fas ../multi.fas
+	mv pair.refine.fas ../pair.fas
+	cd ..
+	rm -rf Chr*.fa chr* *.sh Processing Pairwise Results
 ' ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked ColCEN_unmasked ColCEN_rmmasked
 cd ..
 ```
@@ -246,7 +248,7 @@ cd ..
 
 ```shell
 mkdir structure
-perl struct_split.pl \
+perl gff2bed_split.pl \
 	data/Araport11_gene_type.txt \
 	data/Araport11_cleanformat.gff \
 	structure
@@ -266,7 +268,7 @@ cut -f 4 data/Atha.mrna.Nm.bed \
 	| awk -F "/" '{print $1}' \
 	| sort | uniq >data/Atha.mrna.Nm.genelist.tsv
 grep -f Atha.mrna.Nm.gene.list structure/gene.bed >structure/withNm.gene.bed
-rm struct/*.raw.bed
+rm structure/*.raw.bed
 ```
 
 ```shell
@@ -482,7 +484,7 @@ done
 ```shell
 parallel -j 20 "
 	perl ../promotor_intsec.pl \
-		../struct/promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.prom.bed
+		../structure/promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.prom.bed
 	perl ../arg_meth_link_neo.pl \
 		../../MASED/Memory/AT.beta.1.tsv \
 		{1}_{2}/time-point.{3}.prom.bed \
@@ -508,7 +510,7 @@ done
 ```shell
 parallel -j 20 "
 	perl ../promotor_intsec.pl \
-		../struct/pseudogene.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pseudo.prom.bed
+		../structure/pseudogene.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pseudo.prom.bed
 	perl ../arg_meth_link_neo.pl \
 		../../MASED/Memory/AT.beta.1.tsv \
 		{1}_{2}/time-point.{3}.pseudo.prom.bed \
@@ -532,7 +534,7 @@ done
 
 parallel -j 20 "
 	perl ../promotor_intsec.pl \
-		../struct/protein_coding.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pc.prom.bed
+		../structure/protein_coding.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pc.prom.bed
 	perl ../arg_meth_link_neo.pl \
 		../../MASED/Memory/AT.beta.1.tsv \
 		{1}_{2}/time-point.{3}.pc.prom.bed \

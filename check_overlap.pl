@@ -3,22 +3,31 @@ use strict;
 use warnings;
 use Getopt::Long;
 
-sub overlap_proportion {
-    my ( $start1, $end1, $start2, $end2 ) = @_;
+sub OVERLAP_CLOSE {
+    my ( $start1, $end1, $start2, $end2, $threshold ) = @_;
+
+    my $length1 = $end1 - $start1 + 1;
+    my $length2 = $end2 - $start2 + 1;
 
     if ( $end1 >= $start2 && $end2 >= $start1 ) {
         my $overlap_start  = $start1 > $start2 ? $start1 : $start2;
         my $overlap_end    = $end1 < $end2     ? $end1   : $end2;
         my $overlap_length = $overlap_end - $overlap_start + 1;
 
-        my $length1 = $end1 - $start1 + 1;
-        my $length2 = $end2 - $start2 + 1;
-
         my $proportion1 = $overlap_length / $length1;
         my $proportion2 = $overlap_length / $length2;
 
-        return ( $proportion1 > $_[4] || $proportion2 > $_[4] );
+        return ( $proportion1 > $threshold || $proportion2 > $threshold );
     }
+    elsif ( $threshold < 0 ) {
+        my $distance =
+          ( $start2 > $end1 ) ? $start2 - $end1 - 1 : $start1 - $end2 - 1;
+        my $proportion1 = $distance / $length1;
+        my $proportion2 = $distance / $length2;
+
+        return ( $proportion1 < -$threshold || $proportion2 < -$threshold );
+    }
+
     return 0;
 }
 
@@ -51,7 +60,7 @@ while ( my $line = <$FH> ) {
             my ( $start2, $end2 ) = split( /-/, $pos2 );
             if (
                 $chr1 eq $chr2
-                && overlap_proportion(
+                && OVERLAP_CLOSE(
                     $start1, $end1, $start2, $end2, $overlap_threshold
                 )
               )

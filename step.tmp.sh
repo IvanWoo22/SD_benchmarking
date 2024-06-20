@@ -22,7 +22,7 @@ for i in TAIR10 ColCEN; do
 	parallel -j 5 '
 		RepeatMasker -species arabidopsis -pa 5 -s -xsmall -e ncbi -dir . Chr{}.fa
 		RM2Bed.py -d . Chr{}.fa.out
-		trf Chr{}.fa 2 5 7 80 10 40 500 -l 10 >Chr{}.fa.dat
+		trf Chr{}.fa 2 5 7 80 10 40 500 -l 10 -h -ngs >Chr{}.fa.dat
 		dustmasker -in Chr{}.fa -outfmt acclist -out - | sed '\''s/^>//'\'' >Chr{}.fa_dust.bed
 	' ::: {1..5}
 	cat Chr*.fa_rm.bed | bedtools sort -i - >repeatmasker.out.bed
@@ -38,8 +38,6 @@ for i in TAIR10 ColCEN; do
 		| bedtools merge -d 100 -i - >tmp1.msk.bed
 	cut -f 1-3 tmp.msk.bed \
 		| bedtools sort -i - \
-		| bedtools merge -i - \
-		| awk '$3-$2 <= 2000 {print $0}' \
 		| bedtools merge -d 10 -i - >tmp2.msk.bed
 	cut -f 1-3 tmp.msk.bed tmp1.msk.bed tmp2.msk.bed \
 		| bedtools sort -i - \
@@ -72,13 +70,14 @@ cd .. && rm -rf "smcover"
 cd ..
 
 mkdir "biser" && cd "biser" || exit
-parallel -j 6 '
+parallel -j 3 '
 	mkdir {} && cd {} || exit
-	biser -t 4 -o biser_out ../../preref/{}.fa
+	biser -t 6 -o biser_out ../../preref/{}.fa
 	awk '\''{print $1"("$9"):"$2"-"$3"\t"$4"("$10"):"$5"-"$6}'\'' biser_out | linkr sort stdin | linkr clean stdin -o links.sort.clean.tsv
-	rgr merge links.sort.clean.tsv -c 0.95 -o links.merge.tsv
-	linkr clean links.sort.clean.tsv -r links.merge.tsv --bundle 500 -o links.clean.tsv
-	linkr connect links.clean.tsv -r 0.05 | linkr filter stdin -r 0.05 -o links.tsv
+	rgr merge links.sort.clean.tsv -c 0.9 -o links.merge.tsv
+	linkr clean links.sort.clean.tsv -r links.merge.tsv --bundle 0 -o links.clean.tsv
+	linkr connect links.clean.tsv -r 0.05 | linkr filter stdin -r 0.05 -o links.temp.tsv
+	perl ../../check_overlap.pl --input links.temp.tsv --exclude --overlap 0.2 >links.tsv
 	singularity run $HOME/egaz_master.sif egaz prepseq ../../preref/{}.fa -o .
 	perl -nla -F"\t" -e "print for @F" <links.tsv | spanr cover stdin -o cover.yml
 	echo "key,count" >links.count.csv
@@ -86,38 +85,34 @@ parallel -j 6 '
 		linkr filter links.tsv -n ${n} -o links.copy${n}.tsv
 		perl -nla -F"\t" -e "print for @F" <links.copy${n}.tsv | spanr cover stdin -o copy${n}.temp.yml
 		wc -l links.copy${n}.tsv | perl -nl -e "
-            @fields = grep {/\S+/} split /\s+/;
-            next unless @fields == 2;
-            next unless \$fields[1] =~ /links\.([\w-]+)\.tsv/;
-            printf qq{%s,%s\n}, \$1, \$fields[0];
-        " >>links.count.csv
+				@fields = grep {/\S+/} split /\s+/;
+				next unless @fields == 2;
+				next unless \$fields[1] =~ /links\.([\w-]+)\.tsv/;
+				printf qq{%s,%s\n}, \$1, \$fields[0];
+			" >>links.count.csv
 		rm links.copy${n}.tsv
 	done
 	spanr merge copy2.temp.yml copy3.temp.yml copy4-50.temp.yml -o copy.yml
 	spanr stat chr.sizes copy.yml --all -o links.copy.csv
 	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops mergecsv links.copy.csv links.count.csv --concat -o copy.csv
 	spanr stat chr.sizes cover.yml -o cover.yml.csv
-	rm -rf Chr*.fa chr* ./*.temp.yml ./links.merge.tsv ./links.sort.clean.tsv
-' ::: TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked
+	rm -rf Chr*.fa chr* ./*.temp.*
+' ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked
 cd ..
 
 mkdir "lastz" && cd "lastz" || exit
-echo 'strain,strain_id,species,species_id,genus,genus_id,family,family_id,order,order_id
-Atha,3702,"Arabidopsis thaliana",3702,Arabidopsis,3701,Brassicaceae,3700,Brassicales,3699' >ensembl_taxon.csv
-parallel -j 6 '
+parallel -j 3 '
 	mkdir {}
 	singularity run $HOME/egaz_master.sif egaz prepseq ../preref/{}.fa -o {}/
-	singularity run $HOME/egaz_master.sif egaz template {}/ --self -o {}/ --taxon ./ensembl_taxon.csv --circos --parallel 16 -v
 	cd {} || exit
 	mkdir -p Pairwise
-	singularity run $HOME/egaz_master.sif egaz lastz --isself --set set01 -C 0 --parallel 4 --verbose . . -o Pairwise/vsSelf
-	singularity run $HOME/egaz_master.sif egaz lpcnam --parallel 4 --verbose . . Pairwise/vsSelf
-	mkdir -p Results/vsSelf
-	mkdir -p Processing/vsSelf
-	ln -s "$(pwd)"/chr.fasta Processing/vsSelf/genome.fa
-	cp -f "$(pwd)"/chr.sizes Processing/vsSelf/chr.sizes
-	cd Processing/vsSelf || exit
-	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops axt2fas ../../Pairwise/vsSelf/axtNet/*.axt.gz -l 1000 -s chr.sizes -o stdout >axt.fas
+	singularity run $HOME/egaz_master.sif egaz lastz --isself --set set01 -C 0 --parallel 4 --verbose . . -o Pairwise
+	singularity run $HOME/egaz_master.sif egaz lpcnam --parallel 4 --verbose . . Pairwise
+	mkdir -p Results
+	mkdir -p Processing
+	ln -s "$(pwd)"/chr.fasta Processing/genome.fa
+	cd Processing || exit
+	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops axt2fas ../Pairwise/axtNet/*.axt.gz -l 1000 -s ../chr.sizes -o stdout >axt.fas
 	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops separate axt.fas -o . --nodash -s .sep.fasta
 	singularity run $HOME/egaz_master.sif egaz exactmatch target.sep.fasta genome.fa --length 500 --discard 50 -o replace.target.tsv
 	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops replace axt.fas replace.target.tsv -o axt.target.fas
@@ -126,7 +121,7 @@ parallel -j 6 '
 	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops covers axt.correct.fas -o axt.correct.yml
 	spanr split axt.correct.yml -s .temp.yml -o .
 	spanr compare --op union target.temp.yml query.temp.yml -o axt.union.yml
-	spanr stat chr.sizes axt.union.yml -o union.csv
+	spanr stat ../chr.sizes axt.union.yml -o ../union.csv
 	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops links axt.correct.fas -o stdout | perl -nl -e "s/(target|query)\.//g; print;" >links.lastz.tsv
 	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops separate axt.correct.fas --nodash --rc -o stdout | perl -nl -e "/^>/ and s/^>(target|query)\./\>/; print;" | faops filter -u stdin stdout | faops filter -n 250 stdin stdout >axt.gl.fasta
 	singularity run $HOME/egaz_master.sif egaz blastn axt.gl.fasta genome.fa -o axt.bg.blast --parallel 8
@@ -137,43 +132,36 @@ parallel -j 6 '
 	singularity run $HOME/egaz_master.sif egaz blastlink axt.all.blast -c 0.95 -o links.blast.tsv --parallel 8
 	linkr sort links.lastz.tsv links.blast.tsv -o links.sort.tsv
 	linkr clean links.sort.tsv -o links.sort.clean.tsv
-	rgr merge links.sort.clean.tsv -c 0.95 -o links.merge.tsv
-	linkr clean links.sort.clean.tsv -r links.merge.tsv --bundle 500 -o links.clean.tsv
+	rgr merge links.sort.clean.tsv -c 0.9 -o links.merge.tsv
+	linkr clean links.sort.clean.tsv -r links.merge.tsv --bundle 0 -o links.clean.tsv
 	linkr connect links.clean.tsv -r 0.9 -o links.connect.tsv
-	linkr filter links.connect.tsv -r 0.8 -o links.filter.tsv
+	linkr filter links.connect.tsv -r 0.9 -o links.filter.tsv
 	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops create links.filter.tsv -g genome.fa -o multi.temp.fas
 	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops refine multi.temp.fas --msa mafft -p 16 --chop 10 -o multi.refine.fas
-	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops links multi.refine.fas -o stdout | linkr sort stdin -o stdout | linkr filter stdin -n 2-50 -o links.refine.tsv
-	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops links multi.refine.fas -o stdout --best | linkr sort stdin -o links.best.tsv
-	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops create links.best.tsv -g genome.fa --name Atha -o pair.temp.fas
-	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops refine pair.temp.fas --msa mafft -p 16 -o pair.refine.fas
-	perl -nla -F"\t" -e "print for @F" <links.refine.tsv | spanr cover stdin -o cover.yml
+	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops links multi.refine.fas -o stdout | linkr sort stdin -o stdout | linkr filter stdin -n 2-50 -o links.temp.tsv
+	perl ../../../check_overlap.pl --input links.temp.tsv --exclude --overlap 0.05 >../links.tsv
+	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops create ../links.tsv -g genome.fa -o multi.temp.fas
+	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops refine multi.temp.fas --msa mafft -p 16 --chop 10 -o ../multi.fas
+	cd ..
+	perl -nla -F"\t" -e "print for @F" <links.tsv | spanr cover stdin -o cover.yml
 	echo "key,count" >links.count.csv
 	for n in 2 3 4-50; do
-		linkr filter links.refine.tsv -n ${n} -o links.copy${n}.tsv
+		linkr filter links.tsv -n ${n} -o links.copy${n}.tsv
 		perl -nla -F"\t" -e "print for @F" <links.copy${n}.tsv | spanr cover stdin -o copy${n}.temp.yml
 		wc -l links.copy${n}.tsv | perl -nl -e "
-            @fields = grep {/\S+/} split /\s+/;
-            next unless @fields == 2;
-            next unless \$fields[1] =~ /links\.([\w-]+)\.tsv/;
-            printf qq{%s,%s\n}, \$1, \$fields[0];
-        " >>links.count.csv
+				@fields = grep {/\S+/} split /\s+/;
+				next unless @fields == 2;
+				next unless \$fields[1] =~ /links\.([\w-]+)\.tsv/;
+				printf qq{%s,%s\n}, \$1, \$fields[0];
+			" >>links.count.csv
 		rm links.copy${n}.tsv
 	done
 	spanr merge copy2.temp.yml copy3.temp.yml copy4-50.temp.yml -o copy.yml
 	spanr stat chr.sizes copy.yml --all -o links.copy.csv
 	/home/linuxbrew/.linuxbrew/Cellar/perl/5.38.2_1/bin/fasops mergecsv links.copy.csv links.count.csv --concat -o copy.csv
-	spanr stat chr.sizes cover.yml -o cover.yml.csv
-	cp cover.yml ../../cover.yml
-	cp copy.yml ../../copy.yml
-	mv cover.yml.csv ../../cover.csv
-	mv copy.csv ../../copy.csv
-	cp links.refine.tsv ../../links.tsv
-	mv multi.refine.fas ../../multi.fas
-	mv pair.refine.fas ../../pair.fas
-	cd ../..
-	rm -rf Processing Pairwise Results Chr*.fa chr* *.sh
-' ::: TAIR10_rmmasked TAIR10_E58masked ColCEN_rmmasked
+	spanr stat chr.sizes cover.yml -o cover.csv
+	rm -rf Chr*.fa chr* *.temp.* Processing Pairwise Results
+' ::: TAIR10_unmasked TAIR10_rmmasked TAIR10_E58masked
 cd ..
 
 mkdir "sd_meth" && cd "sd_meth" || exit
@@ -401,7 +389,7 @@ done
 
 parallel -j 20 "
 	perl ../promotor_intsec.pl \
-		../struct/pseudogene.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pseudo.prom.bed
+		../structure/pseudogene.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pseudo.prom.bed
 	perl ../arg_meth_link_neo.pl \
 		../../MASED/Memory/AT.beta.1.tsv \
 		{1}_{2}/time-point.{3}.pseudo.prom.bed \
@@ -425,7 +413,7 @@ done
 
 parallel -j 20 "
 	perl ../promotor_intsec.pl \
-		../struct/protein_coding.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pc.prom.bed
+		../structure/protein_coding.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pc.prom.bed
 	perl ../arg_meth_link_neo.pl \
 		../../MASED/Memory/AT.beta.1.tsv \
 		{1}_{2}/time-point.{3}.pc.prom.bed \
@@ -458,7 +446,7 @@ for i in lastz biser; do
 				--all temp.yml | awk -F "," 'NR==2{printf $2 "\t"}' >>links2_cover_in_timeline.tsv
 			rm temp.yml
 			closestBed -d -a ${i}_${j}/time-point."${k}".sort.bed \
-				-b ../Atha.mrna.Nm.bed -t all \
+				-b ../data/Atha.mrna.NmNeo.bed -t all \
 				| awk '$NF==0' | cut -f 6-8 \
 				| sort | uniq | wc -l >>links2_cover_in_timeline.tsv
 		done
