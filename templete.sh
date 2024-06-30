@@ -1,29 +1,19 @@
-mkdir TAIR10_rm && cd TAIR10_rm || exit
-perl ../../gff2bed_TE.pl ../../data/Araport11.cleanformat.gff >TE.bed
-faops split-name ../TAIR10_unmasked.fa .
-parallel -j 5 '
-		RepeatMasker -species arabidopsis -pa 5 -s -xsmall -e ncbi -dir . Chr{}.fa
-		RM2Bed.py -d . Chr{}.fa.out
-		trf Chr{}.fa 2 5 7 80 10 40 500 -l 10 -h -ngs >Chr{}.fa.dat
-		dustmasker -in Chr{}.fa -outfmt acclist -out - | sed '\''s/^>//'\'' >Chr{}.fa_dust.bed
-	' ::: {1..5}
-cat Chr*.fa_rm.bed | bedtools sort -i - >repeatmasker.out.bed
-cat Chr*.fa_dust.bed | bedtools sort -i - >dust.out.bed
-python ../../trf_merge.py Chr{1..5}.fa.dat trf.out.bed
-
-cat trf.out.bed dust.out.bed repeatmasker.out.bed TE.bed | cut -f 1-3 >tmp.msk.bed
-cut -f 1-3 tmp.msk.bed \
-	| bedtools sort -i - \
-	| bedtools merge -i - \
-	| awk '$3-$2 > 2000 {print $0}' \
-	| bedtools merge -d 100 -i - >tmp1.msk.bed
-cut -f 1-3 tmp.msk.bed \
-	| bedtools sort -i - \
-	| bedtools merge -d 10 -i - >tmp2.msk.bed
-cut -f 1-3 tmp.msk.bed tmp1.msk.bed tmp2.msk.bed \
-	| bedtools sort -i - \
-	| bedtools merge -i - \
-	| seqtk seq -l 50 -M /dev/stdin ../TAIR10_unmasked.fa >../TAIR10_rmmasked2.fa
-cd ..
-
-rm -r ./*_rm
+perl ../fetch_time_point.pl \
+	{1}_{2}/time{3}.txt {1}_{2}/time-point.tsv \
+	>{1}_{2}/time-point.{3}.tsv
+awk '$8==1{print $1 "\t" $2 "\t" $3 "\t" NR "\t1\n" $4 "\t" $5 "\t" $6 "\t" NR "\t2}
+$8==0{print $1 "\t" $2 "\t" $3 "\t" NR "\t0\n" $4 "\t" $5 "\t" $6 "\t" NR "\t0}' \
+	{1}_{2}/time-point.{3}.tsv | sort -k1,1 -k2,2n \
+	>{1}_{2}/time-point.{3}.sort.bed
+awk '$8==1{print $1 "\t" $2 "\t" $3 "\t" NR "\t1\t" $7 "\t" $9 "\n" $4 "\t" $5 "\t" $6 "\t" NR "\t2" $7 "\t" $9}
+$8==0{print $1 "\t" $2 "\t" $3 "\t" NR "\t0\t" $7 "\t" $9 "\n" $4 "\t" $5 "\t" $6 "\t" NR "\t0" $7 "\t" $9}' \
+	{1}_{2}/time-point.{3}.tsv | sort -k1,1 -k2,2n >{1}_{2}/time-point.{3}.evolution.bed
+parallel -j 24 '
+	perl ../fetch_time_point.pl {1}_{2}/time{3}.txt {1}_{2}/time-point.tsv >{1}_{2}/time-point.{3}.tsv
+	awk '\''$8==1{print $1 "\t" $2 "\t" $3 "\t" NR "\t1\n" $4 "\t" $5 "\t" $6 "\t" NR "\t2"}
+					$8==0{print $1 "\t" $2 "\t" $3 "\t" NR "\t0\n" $4 "\t" $5 "\t" $6 "\t" NR "\t0"}'\'' \
+		{1}_{2}/time-point.{3}.tsv | sort -k1,1 -k2,2n >{1}_{2}/time-point.{3}.sort.bed
+	awk '\''$8==1{print $1 "\t" $2 "\t" $3 "\t" NR "\t1\t" $7 "\t" $9 "\n" $4 "\t" $5 "\t" $6 "\t" NR "\t2\t" $7 "\t" $9}
+					$8==0{print $1 "\t" $2 "\t" $3 "\t" NR "\t0\t" $7 "\t" $9 "\n" $4 "\t" $5 "\t" $6 "\t" NR "\t0\t" $7 "\t" $9}'\'' \
+		{1}_{2}/time-point.{3}.tsv | sort -k1,1 -k2,2n >{1}_{2}/time-point.{3}.evolution.bed
+' ::: lastz biser ::: TAIR10_rmmasked{1..5} ::: {1..6}

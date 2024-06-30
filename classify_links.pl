@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
+use autodie;
 use AlignDB::IntSpan;
 
 my $partial = $ARGV[-1];
@@ -86,7 +87,7 @@ while (<$LINKS>) {
         my $out_comp = COVER_JUDGE( $set1, $set2, $tmp[0], $tmp[3], \@{$_} );
         print "\t$out_comp";
     }
-    print "\n";
+    print "\t$tmp[6]\n";
 }
 close($LINKS);
 __END__
