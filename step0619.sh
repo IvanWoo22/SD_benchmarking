@@ -321,7 +321,6 @@ parallel -j 20 "
 		{1}_{2}/time-point.{3}.pseudo.promoter.bed \
 		{1}_{2}/time-point.{3}.pseudo.promoter.beta.bed 6
 " ::: lastz biser ::: TAIR10_rmmasked{1..5} ::: {1..6}
-
 rm time-point.pseudo.promoter.beta.all.bed 2>/dev/null
 for i in lastz biser; do
 	for j in TAIR10_rmmasked{1..5}; do
@@ -452,3 +451,110 @@ for i in lastz biser; do
 		done
 	done
 done
+
+for i in {1..6}; do
+	{
+		wc -l <biser_TAIR10_rmmasked5/time-point."${i}".sort.bed
+		closestBed -d -a biser_TAIR10_rmmasked5/time-point."${i}".sort.bed -b TE.bed -t all | awk '$NF==0' | cut -f 1-5 | sort | uniq | wc -l
+		awk '$5==1' biser_TAIR10_rmmasked5/time-point."${i}".sort.bed | wc -l
+		closestBed -d -a biser_TAIR10_rmmasked5/time-point."${i}".sort.bed -b TE.bed -t all | awk '$NF==0' | cut -f 1-5 | sort | uniq | awk '$5==1' | wc -l
+		awk '$5==2' biser_TAIR10_rmmasked5/time-point."${i}".sort.bed | wc -l
+		closestBed -d -a biser_TAIR10_rmmasked5/time-point."${i}".sort.bed -b TE.bed -t all | awk '$NF==0' | cut -f 1-5 | sort | uniq | awk '$5==2' | wc -l
+		awk '$5==0' biser_TAIR10_rmmasked5/time-point."${i}".sort.bed | wc -l
+		closestBed -d -a biser_TAIR10_rmmasked5/time-point."${i}".sort.bed -b TE.bed -t all | awk '$NF==0' | cut -f 1-5 | sort | uniq | awk '$5==0' | wc -l
+	} >temp"${i}".tsv
+done
+
+cd ..
+mkdir "sd_simi" && cd "sd_simi" || exit
+for i in lastz biser; do
+	for j in TAIR10_rmmasked{1..5}; do
+		mkdir "${i}"_"${j}"
+		for k in {1..6}; do
+			mkdir tmp
+			perl ../bed2links.pl \
+				../sd_meth/"${i}"_"${j}"/time-point."${k}".evolution.bed \
+				../preref/"${j}".fa \
+				"${i}"_"${j}"/time-point."${k}".info.tsv tmp
+			for fa_file in tmp/*.fa; do
+				fasops refine "${fa_file}" --msa muscle -o "${fa_file}".out
+			done
+			cat tmp/*.fa.out >"${i}"_"${j}"/time-point."${k}".muscle.fa
+			rm -r tmp
+		done
+	done
+done
+
+for k in {1..6}; do
+	closestBed -d -a \
+		../sd_meth/biser_TAIR10_rmmasked5/time-point."${k}".evolution.bed \
+		-b ../sd_meth/TE.bed -t all \
+		| awk '{
+			if ($NF == 0) {
+        if ($9 <= $2) {
+            start = 0
+        } else {
+            start = $9 - $2
+        }
+        if ($10 >= $3) {
+            end = $3 - $2
+        } else {
+            end = $10 - $2
+        }
+        printf "Chr%s(+):%d-%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n", $1, $2, $3, start, end, $4, $5, $6, $7, $11
+			}
+	}' >TE.list
+	perl ../region_blank_pick.pl \
+		-f biser_TAIR10_rmmasked5/time-point."${k}".muscle.fa -r TE.list \
+		>biser_TAIR10_rmmasked5/time-point."${k}".muscle.TE.tsv
+done
+
+for k in {1..6}; do
+	closestBed -d -a \
+		../sd_meth/biser_TAIR10_rmmasked5/time-point."${k}".evolution.bed \
+		-b ../structure/protein_coding.genebody.bed -t all \
+		| awk '{
+			if ($NF == 0) {
+        if ($9 <= $2) {
+            start = 0
+        } else {
+            start = $9 - $2
+        }
+        if ($10 >= $3) {
+            end = $3 - $2
+        } else {
+            end = $10 - $2
+        }
+        printf "Chr%s(+):%d-%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n", $1, $2, $3, start, end, $4, $5, $6, $7, $11
+			}
+	}' >pc.GB.list
+	perl ../region_relative_pick.pl \
+		-f biser_TAIR10_rmmasked5/time-point."${k}".muscle.fa -r pc.GB.list \
+		| awk '$3-$2>100' \
+		| awk -F "," '$NF-$(NF-1)>100' \
+		| sort -k1,1 -k2,2n >biser_TAIR10_rmmasked5/time-point."${k}".muscle.pc.GB.bed
+	closestBed -d -a \
+		biser_TAIR10_rmmasked5/time-point."${k}".muscle.pc.GB.bed \
+		-b ../structure/protein_coding.genebody.bed -t all \
+		| awk '$NF==0' \
+		| perl ../bed_coverage.pl >biser_TAIR10_rmmasked5/time-point."${k}".muscle.pc.GB.paired.bed
+	perl -F'\t' -lane '($a, $b) = ((split(/\|/, $F[3]))[0], (split(/\|/, $F[7]))[0]); ($a, $b) = sort ($a, $b); print "$a\t$b"' \
+		biser_TAIR10_rmmasked5/time-point."${k}".muscle.pc.GB.paired.bed \
+		| sort | uniq >biser_TAIR10_rmmasked5/time-point."${k}".paired.pc.list
+done
+
+for k in {1..6}; do
+	file="biser_TAIR10_rmmasked5/time-point.${k}.paired.pc.list"
+	while IFS=$'\t' read -r line; do
+		IFS=$'\t' read -r -a columns <<<"$line"
+		for column in "${columns[@]}"; do
+			awk -va="$column.1" '$1==a' ../data/gene_domains.tsv >tmp."$column".tsv
+		done
+	done <"$file"
+done
+while IFS=$'\t' read -r line; do
+	IFS=$'\t' read -r -a columns <<<"$line"
+	for column in "${columns[@]}"; do
+		echo "Column value: $column"
+	done
+done <your_file.txt

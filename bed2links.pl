@@ -11,10 +11,10 @@ while (<$BED>) {
     chomp;
     my @tmp = split( "\t", $_ );
     my $dir = "+";
-    if ( $tmp[5] ne "F" ) {
-        $dir = "-";
-    }
     if ( $tmp[4] != 0 ) {
+        if ( ( $tmp[5] ne "F" ) && ( $tmp[4] == 2 ) ) {
+            $dir = "-";
+        }
         ${ $bed_text[ $tmp[3] - 1 ] }[ $tmp[4] - 1 ] =
           "Chr$tmp[0]\t$tmp[1]\t$tmp[2]\t\t1\t$dir";
         ${ $dup_bool[ $tmp[3] - 1 ] }[ $tmp[4] - 1 ] = 1;
@@ -22,6 +22,12 @@ while (<$BED>) {
           join( "\t", @tmp[ 0, 1, 2, 5, 6 ] );
     }
     else {
+        if (   ( $tmp[5] ne "F" )
+            && defined( $bed_text[ $tmp[3] - 1 ] )
+            && ( @{ $bed_text[ $tmp[3] - 1 ] } ) )
+        {
+            $dir = "-";
+        }
         push(
             @{ $bed_text[ $tmp[3] - 1 ] },
             "Chr$tmp[0]\t$tmp[1]\t$tmp[2]\t\t1\t$dir"

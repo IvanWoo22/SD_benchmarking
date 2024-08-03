@@ -1,15 +1,14 @@
 #!/usr/bin/env perl
 use strict;
 use warnings;
+use autodie;
 
 open my $GFF, "<", $ARGV[0];
 while (<$GFF>) {
     if ( ( !/^#/ ) and ( !/^Chr[MC]/ ) and ( !/^\s*$/ ) ) {
         chomp;
         my @tmp = split "\t";
-        if (   ( $tmp[2] eq "transposable_element_gene" )
-            or ( $tmp[2] eq "transposable_element" ) )
-        {
+        if ( $tmp[2] eq "transposable_element" ) {
             if ( $tmp[8] =~ /ID=([^;]+)(?:;|$)/ ) {
                 my $cid  = $1;
                 my $type = $tmp[2];
