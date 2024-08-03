@@ -552,9 +552,39 @@ for k in {1..6}; do
 		done
 	done <"$file"
 done
-while IFS=$'\t' read -r line; do
-	IFS=$'\t' read -r -a columns <<<"$line"
-	for column in "${columns[@]}"; do
-		echo "Column value: $column"
-	done
-done <your_file.txt
+
+for k in {1..6}; do
+	file="biser_TAIR10_rmmasked5/time-point.${k}.paired.pc.list"
+	while IFS=$'\t' read -r a b; do
+		awk -va="$a.1" 'BEGIN {
+				OFS = "\t"
+				quote = "\047"
+			}
+			$1 == a {
+				domains = (domains == "" ? quote $2 quote : domains ", " quote $2 quote)
+			}
+			END {
+				if (domains != "") {
+					print a, "[" domains "]"
+				}
+			}' ../data/gene_domains.tsv >tmp.1.tsv
+		awk -va="$b.1" 'BEGIN {
+				OFS = "\t"
+				quote = "\047"
+			}
+			$1 == a {
+				domains = (domains == "" ? quote $2 quote : domains ", " quote $2 quote)
+			}
+			END {
+				if (domains != "") {
+					print a, "[" domains "]"
+				}
+			}' ../data/gene_domains.tsv >tmp.2.tsv
+		if [ -s tmp.1.tsv ] && [ -s tmp.2.tsv ]; then
+			python3 ../domains_compare.py \
+				-i tmp.1.tsv -I tmp.2.tsv \
+				-s ../data/domain_score_matrix.tsv \
+				-o output.tsv
+		fi
+	done <"$file"
+done
