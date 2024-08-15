@@ -174,7 +174,7 @@ parallel -j 3 '
 	cd {} || exit
 	mkdir -p Pairwise
 	singularity run $HOME/egaz_master.sif egaz lastz --isself --set set01 -C 0 --parallel 4 --verbose . . -o Pairwise
-	singularity run $HOME/egaz_master.sif egaz lpcnam --parallel 4 --verbose . . Pairwise
+	singularity run $HOME/egaz_master.sif egaz lnam --parallel 4 --verbose . . Pairwise
 	mkdir -p Results
 	mkdir -p Processing
 	ln -s "$(pwd)"/chr.fasta Processing/genome.fa
@@ -338,23 +338,23 @@ done
 
 parallel -j 20 "
 	perl ../promotor_intsec.pl \
-		../structure/protein_coding.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}.pc.promoter.bed
+		../structure/protein_coding.promoter.bed {1}_{2}/time-point.{3}.sort.bed >{1}_{2}/time-point.{3}..promoter.bed
 	perl ../arg_meth_link_neo.pl \
 		../../MASED/Memory/AT.beta.1.tsv \
-		{1}_{2}/time-point.{3}.pc.promoter.bed \
-		{1}_{2}/time-point.{3}.pc.promoter.beta.bed 6
+		{1}_{2}/time-point.{3}..promoter.bed \
+		{1}_{2}/time-point.{3}..promoter.beta.bed 6
 " ::: lastz biser ::: TAIR10_rmmasked{1..5} ::: {1..6}
-rm time-point.pc.promoter.beta.all.bed 2>/dev/null
+rm time-point..promoter.beta.all.bed 2>/dev/null
 for i in lastz biser; do
 	for j in TAIR10_rmmasked{1..5}; do
-		rm ${i}_"${j}"/time-point.pc.promoter.beta.bed 2>/dev/null
+		rm ${i}_"${j}"/time-point..promoter.beta.bed 2>/dev/null
 		for k in {1..6}; do
 			awk -va="${k}" '{print $1 "\t" $2 "\t" $3 "\t" a "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
-				${i}_"${j}"/time-point."${k}".pc.promoter.beta.bed \
-				>>${i}_"${j}"/time-point.pc.promoter.beta.bed
+				${i}_"${j}"/time-point."${k}"..promoter.beta.bed \
+				>>${i}_"${j}"/time-point..promoter.beta.bed
 			awk -va=${i} -vb="${j}" -vc="${k}" '{print b "\t" a "\t" $1 "\t" $2 "\t" $3 "\t" c "\t" $4 "\t" $5 "\t" $7 "\t" $8 "\t" $6}' \
-				${i}_"${j}"/time-point."${k}".pc.promoter.beta.bed \
-				>>time-point.pc.promoter.beta.all.bed
+				${i}_"${j}"/time-point."${k}"..promoter.beta.bed \
+				>>time-point..promoter.beta.all.bed
 		done
 	done
 done
@@ -503,10 +503,12 @@ for k in {1..6}; do
         }
         printf "Chr%s(+):%d-%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n", $1, $2, $3, start, end, $4, $5, $6, $7, $11
 			}
-	}' >TE.list
+	}' >biser_TAIR10_rmmasked5/time-point."${k}".TE.list
 	perl ../region_blank_pick.pl \
-		-f biser_TAIR10_rmmasked5/time-point."${k}".muscle.fa -r TE.list \
+		-f biser_TAIR10_rmmasked5/time-point."${k}".muscle.fa \
+		-r biser_TAIR10_rmmasked5/time-point."${k}".TE.list \
 		>biser_TAIR10_rmmasked5/time-point."${k}".muscle.TE.tsv
+	rm biser_TAIR10_rmmasked5/time-point."${k}".TE.list
 done
 
 for k in {1..6}; do
@@ -527,34 +529,20 @@ for k in {1..6}; do
         }
         printf "Chr%s(+):%d-%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n", $1, $2, $3, start, end, $4, $5, $6, $7, $11
 			}
-	}' >pc.GB.list
+	}' >biser_TAIR10_rmmasked5/time-point."${k}".GB.list
 	perl ../region_relative_pick.pl \
-		-f biser_TAIR10_rmmasked5/time-point."${k}".muscle.fa -r pc.GB.list \
-		| awk '$3-$2>100' \
-		| awk -F "," '$NF-$(NF-1)>100' \
-		| sort -k1,1 -k2,2n >biser_TAIR10_rmmasked5/time-point."${k}".muscle.pc.GB.bed
+		-f biser_TAIR10_rmmasked5/time-point."${k}".muscle.fa -r biser_TAIR10_rmmasked5/time-point."${k}".GB.list \
+		| awk '$3-$2>200' \
+		| awk -F "," '$NF-$(NF-1)>200' \
+		| sort -k1,1 -k2,2n >biser_TAIR10_rmmasked5/time-point."${k}".muscle.GB.bed
 	closestBed -d -a \
-		biser_TAIR10_rmmasked5/time-point."${k}".muscle.pc.GB.bed \
+		biser_TAIR10_rmmasked5/time-point."${k}".muscle.GB.bed \
 		-b ../structure/protein_coding.genebody.bed -t all \
 		| awk '$NF==0' \
-		| perl ../bed_coverage.pl >biser_TAIR10_rmmasked5/time-point."${k}".muscle.pc.GB.paired.bed
+		| perl ../bed_coverage.pl >biser_TAIR10_rmmasked5/time-point."${k}".muscle.GB.paired.bed
 	perl -F'\t' -lane '($a, $b) = ((split(/\|/, $F[3]))[0], (split(/\|/, $F[7]))[0]); ($a, $b) = sort ($a, $b); print "$a\t$b"' \
-		biser_TAIR10_rmmasked5/time-point."${k}".muscle.pc.GB.paired.bed \
-		| sort | uniq >biser_TAIR10_rmmasked5/time-point."${k}".paired.pc.list
-done
-
-for k in {1..6}; do
-	file="biser_TAIR10_rmmasked5/time-point.${k}.paired.pc.list"
-	while IFS=$'\t' read -r line; do
-		IFS=$'\t' read -r -a columns <<<"$line"
-		for column in "${columns[@]}"; do
-			awk -va="$column.1" '$1==a' ../data/gene_domains.tsv >tmp."$column".tsv
-		done
-	done <"$file"
-done
-
-for k in {1..6}; do
-	file="biser_TAIR10_rmmasked5/time-point.${k}.paired.pc.list"
+		biser_TAIR10_rmmasked5/time-point."${k}".muscle.GB.paired.bed \
+		| sort | uniq >biser_TAIR10_rmmasked5/time-point."${k}".paired.list
 	while IFS=$'\t' read -r a b; do
 		awk -va="$a.1" 'BEGIN {
 				OFS = "\t"
@@ -584,7 +572,33 @@ for k in {1..6}; do
 			python3 ../domains_compare.py \
 				-i tmp.1.tsv -I tmp.2.tsv \
 				-s ../data/domain_score_matrix.tsv \
-				-o output.tsv
+				-o biser_TAIR10_rmmasked5/time-point."${k}".paired.compared.tmp
 		fi
-	done <"$file"
+		rm tmp.1.tsv tmp.2.tsv
+	done <biser_TAIR10_rmmasked5/time-point."${k}".paired.list
+	awk -F'\t' '{sub(/\.1$/, "", $1); sub(/\.1$/, "", $2); print}' OFS='\t' \
+		biser_TAIR10_rmmasked5/time-point."${k}".paired.compared.tmp \
+		>biser_TAIR10_rmmasked5/time-point."${k}".paired.compared.tsv
+	rm .GB.list biser_TAIR10_rmmasked5/time-point."${k}".paired.compared.tmp
+	perl ../tsv_tiny1.pl \
+		<biser_TAIR10_rmmasked5/time-point."${k}".muscle.GB.paired.bed \
+		| sort | uniq \
+		>biser_TAIR10_rmmasked5/time-point."${k}".muscle.GB.paired.list
+	tsv-join biser_TAIR10_rmmasked5/time-point."${k}".muscle.GB.paired.list \
+		-f biser_TAIR10_rmmasked5/time-point."${k}".paired.compared.tsv \
+		-k 1,2 -a 3 \
+		>biser_TAIR10_rmmasked5/time-point."${k}".paired.compared.score.tsv
 done
+
+for k in {1..6}; do
+	awk '$NF>0' \
+		biser_TAIR10_rmmasked5/time-point."${k}".paired.compared.score.tsv \
+		>biser_TAIR10_rmmasked5/time-point."${k}".paired.score.tsv
+done
+
+awk '{print $0 "\t" $2 "-" $3}' ../structure/promoter.bed >promoter.bed
+
+perl ../arg_meth_link_neo.pl \
+	../../MASED/Memory/AT.beta.1.tsv \
+	promoter.bed \
+	promoter.beta.bed 5
